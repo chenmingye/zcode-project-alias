@@ -1,0 +1,11 @@
+{
+  "name": "zcode-project-alias-marketplace",
+  "description": "ZCode 项目昵称",
+  "plugins": [{
+    "name": "zcode-project-alias",
+    "version": "0.1.0",
+    "description": "给同名项目设置独立昵称；需要已运行的 Token 状态栏热加载器",
+    "source": "./plugins/zcode-project-alias",
+    "category": "productivity"
+  }]
+}

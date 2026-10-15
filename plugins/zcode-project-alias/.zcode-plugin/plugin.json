@@ -1,0 +1,11 @@
+{
+  "name": "zcode-project-alias",
+  "version": "0.1.0",
+  "description": "项目昵称：区分同名项目，复用 Token 状态栏热加载，无需重启安装",
+  "author": {
+    "name": "Jason.chen"
+  },
+  "commands": "commands",
+  "homepage": "https://github.com/chenmingye/zcode-project-alias",
+  "repository": "https://github.com/chenmingye/zcode-project-alias"
+}

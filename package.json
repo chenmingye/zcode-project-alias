@@ -1,0 +1,16 @@
+{
+  "name": "zcode-project-alias-dev",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/runtime.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'",
+    "check": "node --check plugins/zcode-project-alias/runtime/alias.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright": "^1.64.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
+}
