@@ -1,35 +1,33 @@
 # ZCode 项目昵称
 
-为多份同名项目设置独立昵称，不改真实目录、Git/SVN 信息或会话归属。作者：Jason.chen。
+**独立插件，无其他插件依赖。** 打开左侧项目的“⋯ 更多”菜单，点击“重命名”，为多个同名项目设置不同昵称。原“移除”操作保留；不改真实目录、仓库名称或会话归属。
 
-首版 `0.1.0`。面向已安装并运行 **zcode-token-usage-statusbar** 的 ZCode Desktop；本机适配目标为 macOS ZCode **3.15.3 / 3.15.3.8237**。
+版本 `0.2.0`。作者：Jason.chen。目前适配 macOS ZCode Desktop 3.15.3 的项目列表结构，其他客户端版本需重新验证。
 
 ## 使用
 
-项目行右侧点击“昵称”，输入名称并保存。留空或点击“恢复原名”可还原。悬停项目行可查看真实路径。
+1. 在项目行点击“⋯ 更多”。
+2. 点击菜单里的“重命名”，输入昵称并保存。
+3. 留空或点击“恢复原名”可还原；悬停项目行可查看真实路径。
 
-本地项目按完整路径保存；远端按连接身份与路径隔离。昵称保存在当前 ZCode 客户端的 localStorage，跨窗口同步，关闭重开仍保留。清除应用网站数据或换应用配置目录会丢失这些昵称；不承诺跨设备同步。远端连接身份变化时可能需要重新设置。
+昵称按完整路径与远端身份分别保存到当前客户端 localStorage。同一配置下的窗口间同步，重开客户端仍可恢复。清除应用存储、换配置目录或更换远端身份后可能需要重新设置。首版覆盖左侧“项目”视图，其他标题、分组视图和搜索结果仍由宿主显示原名称。
 
-## 免重启安装
+## 安装
 
-先确保 Token 状态栏插件已经在当前 ZCode 进程中运行。仅安装了文件而尚未加载主进程注入器时，无法保证免重启生效。
+需要 macOS、Python 3.9+、Node.js 和系统 `codesign`。没有其他插件也能安装、运行和卸载。运行时不需要 npm 安装依赖；仓库的 npm 依赖仅用于开发测试。
 
-在仓库根目录执行：
+将本仓库克隆到本地后，在仓库根目录执行：
 
 ```bash
 python3 plugins/zcode-project-alias/scripts/install.py doctor
 python3 plugins/zcode-project-alias/scripts/install.py install
 ```
 
-等待约 2–5 秒，检查左侧项目行出现“昵称”。不需要退出、刷新窗口或切换长任务。脚本输出 `live_verified: false` 表示只核实了磁盘状态，界面结果需要实际观察。
+**首次加载独立入口需要正常启动 ZCode。** 若当前 ZCode 正在运行，安装器只准备本插件自己的文件，返回 `state: prepared` 和退出码 `2`，不修改运行中的应用、不退出或重启它。请等长任务完成后自行退出 ZCode，再执行 `install`，成功后正常启动。不能把 `prepared` 当成已经加载。
 
-安装器需要 Python 3、Node.js。它会验证已有热加载器与 `hot_reload` 设置、校验合并脚本语法、备份原脚本后原子替换。不会修改 `app.asar`、数据库或业务项目，不开启调试端口，不联网。修改范围仅为 `~/.zcode/zcode-token-usage-statusbar/overlay.js` 末尾的本扩展片段、同目录的安装锁与 `project-alias-backups/`。
+独立加载器已启动时，重新执行 `install` 可热更新自己的界面脚本；加载器本身变化仍需下次启动。安装器不会刷新窗口、切换任务或发送消息。
 
-检查失败时会返回非零退出码，不会自动重启应用或修改 Token 插件配置。当前进程未加载热加载器时，应等长任务结束后再处理；不能用刷新或重启来强行验证。
-
-## 作为插件添加
-
-在 ZCode 插件市场添加 GitHub 仓库 `chenmingye/zcode-project-alias`，或添加本仓库的本地根目录（包含 `marketplace.json`），安装并启用 `zcode-project-alias`。也可以在 ZCode 对话输入：
+### 插件市场
 
 ```text
 /plugin marketplace add chenmingye/zcode-project-alias
@@ -37,41 +35,58 @@ python3 plugins/zcode-project-alias/scripts/install.py install
 /project-alias-install
 ```
 
-命令包没有 SessionStart 自动安装钩子；安装市场插件后需显式执行 `/project-alias-install`，或让 AI 运行上面的 Python 安装命令。已有会话尚未发现新命令时，直接运行 Python 即可，不必重载会话。此处的插件是分发与命令入口，昵称界面通过已有 Token 插件的客户端热加载器注入，并非官方项目改名 API。
+市场提供安装/卸载命令。当前会话未发现新命令时可直接运行上面的 Python 命令，不必重载会话。仅安装市场命令包不会自动修改客户端，也不会自动重启。
 
-## 卸载与兼容
+## 独立加载方式与文件范围
+
+官方 UI Plugin 提供自己的交互面板，已查阅接口没有宿主项目菜单的扩展点，因此本插件使用独立的本地客户端补丁：
+
+- 自己的运行目录：`~/.zcode/zcode-project-alias/`，包含 `loader.cjs`、`alias.js`、启停配置、状态文件与备份。
+- 自己的启动标记：只在 ZCode `app.asar` 的主进程入口追加本加载器的 import，保留原入口其他内容。
+- 更新受影响入口与 ASAR 头的 SHA256，并同步 `Info.plist` 完整性记录。应用资源变化后在本机重新建立 ad-hoc 签名，保留现有 entitlements 和硬化运行时 flags；这会替换厂商签名，不代表厂商签名仍然有效。
+- 首次修改前备份 ASAR、Info.plist、可执行文件与签名资源；签名失败则回滚本次事务。不关闭 ASAR 校验，不修改 Electron fuses，不移除系统隔离属性，不开启调试端口。
+- 不读取或修改任何其他插件的脚本、设置、加载器。自己的加载器只注入 ZCode 主界面，不注入外部网页、webview 或其他本地页面。
+
+这是非官方客户端扩展。ZCode 自身升级可能覆盖启动入口；升级后先运行 doctor，必要时重新安装。项目行结构不兼容时会跳过，不按同名文字猜测项目、不写宿主业务状态。不要把本机修改后的应用包分享给其他人。
+
+## 检查与卸载
+
+`doctor` 只读检查应用、自己的入口与状态。`hook_matches` 表示磁盘入口就绪；`live_verified` 只有匹配当前进程的近期加载器状态确认界面版本后才为 true。最终仍应实际打开项目菜单确认“重命名”。
+
+运行中停用界面：
 
 ```bash
 python3 plugins/zcode-project-alias/scripts/install.py uninstall
 ```
 
-或先执行 `/project-alias-uninstall`。约 2–5 秒后界面恢复，已保存昵称保留。卸载会在原脚本末尾留下一个清理调用，以便运行中的窗口热移除模块；原 Token 脚本内容逐字节保留。**只在插件市场禁用/卸载命令包不会自动撤销界面补丁**，应先执行热卸载。
+独立加载器会在约 2 秒内撤销自己的菜单项、恢复原名称，保留已保存昵称。这个操作不退出 ZCode；自己的启动标记保留为停用状态。市场里禁用命令包不会自动撤销客户端补丁，应先执行本卸载命令。
 
-首次及后续变更的完整原脚本备份放在 `project-alias-backups/`。正常卸载按标记移除自身片段，不直接恢复整个旧备份，避免覆盖 Token 插件后来的升级。
+要完全移除自己的启动入口，等长任务结束并自行退出 ZCode 后执行：
 
-Token 插件升级可能替换 `overlay.js`，使昵称入口消失；重新执行 doctor/install 即可。安装器发现自身标记损坏或标记后有其他代码时拒绝覆盖。首版不修改 Token 插件的更新机制。客户端版本升级可能改变私有 React 节点与项目行结构；不兼容的项目行会跳过，不猜测名称、不修改宿主状态。
+```bash
+python3 plugins/zcode-project-alias/scripts/install.py uninstall --remove-hook
+```
 
-目前覆盖左侧“项目”视图的项目行；聊天头部、搜索结果、分组视图及系统标题仍显示宿主原名称。远端身份隔离已在浏览器 fixture 验证，真实 SSH/WSL/Docker 尚未实测。Windows 安装器暂不支持（使用 macOS/POSIX 文件锁）。
+只移除本插件标记，不拿旧备份整体覆盖后来更新的应用。运行目录和备份仍保留，避免误删昵称和恢复证据。
 
-## 开发与实测范围
+## 开发与验证
 
 ```bash
 npm ci --no-audit --no-fund
 npm run check
 npm test
+python3 scripts/package.py
 ```
 
-浏览器测试使用独立的无头 Google Chrome，默认读取 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`；其他环境可用 `CHROME_PATH` 指定。测试不连接用户浏览器，不修改本机 ZCode。开发依赖只有测试工具与真实 React fixture，运行时无 npm 依赖。
+浏览器测试使用独立无头 Google Chrome，默认路径 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`，可用 `CHROME_PATH` 指定。测试不会连接用户浏览器，不修改本机 ZCode。
 
-当前测试包括：同名不同路径、远端身份、同名任务不误改、保存不触发项目选择、React 重绘、跨窗口同步、新文档恢复、重复注入、恢复原名、取消、存储失败、移除再导入、卸载恢复，以及安装器的幂等、语法失败、损坏标记与热加载关闭保护。
+测试使用真实 React、Radix portal 菜单，覆盖菜单中的重命名与原移除操作、键盘、同名项目隔离、远端身份、重绘、跨窗口、新文档恢复、取消、存储失败和卸载。独立加载器测试覆盖无其他插件时注入、热更新、停用及页面隔离。安装器在临时应用中验证入口、ASAR 完整性、运行中保护、失败回滚，并在 macOS 上验证临时应用的实际签名。
 
-本机只读核实了版本、项目行结构及热加载入口，尚未在正在运行的 ZCode 中安装或验收；安装交由用户指定的 ZCode AI 执行。
+真实 ZCode 的首次启动与真实远端连接尚待用户在方便时验收；开发过程不会为此中断正在执行的长任务。
 
 ## 资料
 
 - [官方插件开发](https://github.com/zai-org/zcode-plugins/blob/main/docs/PLUGIN_DEVELOPMENT_CN.md)
 - [官方 UI Plugin 能力](https://github.com/zai-org/zcode-plugins/blob/main/UI_PLUGIN.md)
-- [Token 状态栏插件](https://github.com/ByteRax/zcode-token-usage-statusbar)
-- [Token 插件注入器](https://github.com/ByteRax/zcode-token-usage-statusbar/blob/main/inject-main.cjs)
-
-给另一 AI 的完整安装任务见 [INSTALL-ZCODE-AI.md](INSTALL-ZCODE-AI.md)。
+- [Electron ASAR 完整性](https://www.electronjs.org/docs/latest/tutorial/asar-integrity)
+- [给 ZCode AI 的完整安装任务书](INSTALL-ZCODE-AI.md)

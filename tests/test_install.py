@@ -1,12 +1,38 @@
-"""在临时 Token 插件目录验证安装器，绝不修改本机正在运行的实例。"""
+"""独立安装器回归：只操作临时应用，无其他插件，无真实应用签名操作。"""
+import hashlib
 import importlib.util
+import json
 from pathlib import Path
+import plistlib
+import struct
+import subprocess
 import tempfile
 import unittest
+import shutil
+import sys
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('installer', Path(__file__).parents[1] / 'plugins/zcode-project-alias/scripts/install.py')
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
+
+
+def make_archive(path, files):
+    tree = {'files': {}}
+    data = b''
+    for name, content in files.items():
+        node = tree
+        parts = name.split('/')
+        for part in parts[:-1]:
+            node = node['files'].setdefault(part, {'files': {}})
+        node['files'][parts[-1]] = {'size': len(content), 'offset': str(len(data)), 'integrity': {
+            'algorithm': 'SHA256', 'hash': hashlib.sha256(content).hexdigest(),
+            'blockSize': 4194304, 'blocks': [hashlib.sha256(content).hexdigest()]}}
+        data += content
+    raw = json.dumps(tree, separators=(',', ':')).encode()
+    pad = (-len(raw)) % 4
+    path.write_bytes(struct.pack('<4I', 4, len(raw) + pad + 8, len(raw) + pad + 4, len(raw)) + raw + b'\0' * pad + data)
+    return hashlib.sha256(raw).hexdigest()
 
 
 class InstallTests(unittest.TestCase):
@@ -14,48 +40,139 @@ class InstallTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        (self.root / 'inject-main.cjs').write_text('hotReloadIfChanged overlay.js executeJavaScript 2000')
-        self.original = b'// Token original\r\n(() => { window.tokenKept = true; })();\r\n'
-        self.overlay = self.root / 'overlay.js'
-        self.overlay.write_bytes(self.original)
+        self.app = self.root / 'ZCode.app'
+        self.data = self.root / 'data'
+        self.archive = self.app / 'Contents/Resources/app.asar'
+        self.info = self.app / 'Contents/Info.plist'
+        self.exe = self.app / 'Contents/MacOS/ZCode'
+        self.archive.parent.mkdir(parents=True)
+        self.exe.parent.mkdir(parents=True)
+        self.exe.write_bytes(b'fake-executable')
+        self.signature = self.app / 'Contents/_CodeSignature/CodeResources'
+        self.signature.parent.mkdir()
+        self.signature.write_bytes(b'original-signature')
+        self.original = b'import fs from "node:fs";\n// unrelated client integration\nimport("file:///unrelated-loader.cjs");\n'
+        header_hash = make_archive(self.archive, {
+            'package.json': b'{"main":"out/main/index.js","type":"module"}',
+            'out/main/index.js': self.original,
+            'unchanged.txt': '其他资源保持原样'.encode(),
+        })
+        self.info.write_bytes(plistlib.dumps({'CFBundleIdentifier': 'dev.zcode.app', 'CFBundleExecutable': 'ZCode',
+            'CFBundleShortVersionString': '3.15.3', 'ElectronAsarIntegrity': {
+                'Resources/app.asar': {'algorithm': 'SHA256', 'hash': header_hash}}}))
+        self.running = patch.object(installer, 'app_running', return_value=[])
+        self.running.start()
+        self.addCleanup(self.running.stop)
+        self.signing = patch.object(installer, 'resign')
+        self.sign = self.signing.start()
+        self.addCleanup(self.signing.stop)
 
-    def test_idempotent_install_uninstall_and_original_preserved(self):
-        result = installer.update(self.root, 'install')
+    def test_install_without_any_other_plugin_and_preserve_existing_code(self):
+        result = installer.run('install', self.app, self.data)
         self.assertEqual(result['state'], 'installed')
-        self.assertEqual(Path(result['backup']).read_bytes(), self.original)
-        installed = self.overlay.read_bytes()
-        installer.update(self.root, 'install')
-        self.assertEqual(self.overlay.read_bytes(), installed)
-        result = installer.update(self.root, 'uninstall')
-        base, payload = installer.split_overlay(self.overlay.read_bytes())
-        self.assertEqual(base, self.original)
-        self.assertEqual(payload, installer.CLEANUP)
-        self.assertEqual(result['state'], 'uninstalled')
-        installer.update(self.root, 'install')
-        self.assertEqual(self.overlay.read_bytes(), installed)
+        asar = installer.Asar(self.archive)
+        before, hook, after = installer.split_hook(asar.entry)
+        self.assertEqual(before + after, self.original)
+        self.assertIn((self.data / 'loader.cjs').as_uri().encode(), hook)
+        self.assertEqual(asar.read('unchanged.txt'), '其他资源保持原样'.encode())
+        self.assertEqual(installer.inspect(self.app, self.data)[1]['hook_matches'], True)
+        self.assertTrue((Path(result['backup']) / 'app.asar').exists())
+        self.assertTrue((self.data / 'alias.js').exists())
+        self.sign.assert_called_once_with(self.app)
+        installed_bytes = self.archive.read_bytes()
+        installer.run('install', self.app, self.data)
+        self.assertEqual(installed_bytes, self.archive.read_bytes())
+        self.assertEqual(self.sign.call_count, 1)
 
-    def test_corrupt_markers_and_other_plugin_tail_refuse_writes(self):
-        for content in [self.original + installer.BEGIN,
-                        self.original + installer.BEGIN + b'x' + installer.END + b'other plugin']:
-            self.overlay.write_bytes(content)
-            with self.assertRaises(ValueError): installer.update(self.root, 'install')
-            self.assertEqual(self.overlay.read_bytes(), content)
+    def test_running_first_install_only_prepares_own_files(self):
+        old = self.archive.read_bytes(), self.info.read_bytes(), self.exe.read_bytes()
+        with patch.object(installer, 'app_running', return_value=[123]):
+            result = installer.run('install', self.app, self.data)
+        self.assertEqual(result['state'], 'prepared')
+        self.assertTrue(result['restart_required'])
+        self.assertFalse(result['hook_installed'])
+        self.assertEqual(old, (self.archive.read_bytes(), self.info.read_bytes(), self.exe.read_bytes()))
+        self.sign.assert_not_called()
+        self.assertTrue((self.data / 'loader.cjs').exists())
 
-    def test_invalid_javascript_and_disabled_reload_preserve_file(self):
-        self.overlay.write_bytes(b'(() => { syntax error')
-        with self.assertRaises(ValueError): installer.update(self.root, 'install')
-        self.assertEqual(self.overlay.read_bytes(), b'(() => { syntax error')
-        self.overlay.write_bytes(self.original)
-        (self.root / 'config.json').write_text('{"hot_reload":false}')
-        with self.assertRaises(ValueError): installer.update(self.root, 'install')
-        self.assertEqual(self.overlay.read_bytes(), self.original)
+    def test_renamed_electron_process_is_still_treated_as_running(self):
+        self.running.stop()
+        rows = f'18708 ZCode\n18721 /Applications/ZCode.app/Contents/Frameworks/ZCode Helper\n99 {self.exe}\n'
+        with patch.object(installer.subprocess, 'run', return_value=type('Result', (), {'stdout': rows})()):
+            self.assertEqual(installer.app_running(self.exe), [18708, 99])
 
-    def test_uninstalled_noop_and_unknown_loader(self):
-        installer.update(self.root, 'uninstall')
-        self.assertEqual(self.overlay.read_bytes(), self.original)
-        (self.root / 'inject-main.cjs').write_text('unknown')
-        with self.assertRaises(ValueError): installer.update(self.root, 'install')
-        self.assertEqual(self.overlay.read_bytes(), self.original)
+    def test_uninstall_while_running_then_remove_own_hook_when_closed(self):
+        installer.run('install', self.app, self.data)
+        hooked = self.archive.read_bytes()
+        with patch.object(installer, 'app_running', return_value=[123]):
+            result = installer.run('uninstall', self.app, self.data)
+        self.assertEqual(result['state'], 'disabled')
+        self.assertEqual(self.archive.read_bytes(), hooked)
+        self.assertFalse(json.loads((self.data / 'enabled.json').read_text())['enabled'])
+        installer.run('uninstall', self.app, self.data, remove_hook=True)
+        self.assertEqual(installer.Asar(self.archive).entry, self.original)
+        self.assertFalse(installer.inspect(self.app, self.data)[1]['hook_installed'])
+
+    def test_signature_failure_rolls_back_archive_plist_binary_and_signature(self):
+        old = self.archive.read_bytes(), self.info.read_bytes(), self.exe.read_bytes()
+        def broken_sign(_app):
+            self.exe.write_bytes(b'partially-re-signed')
+            self.signature.write_bytes(b'new-signature')
+            raise subprocess.CalledProcessError(1, 'codesign')
+        self.sign.side_effect = broken_sign
+        with self.assertRaises(subprocess.CalledProcessError):
+            installer.run('install', self.app, self.data)
+        self.assertEqual(old, (self.archive.read_bytes(), self.info.read_bytes(), self.exe.read_bytes()))
+        self.assertEqual(self.signature.read_bytes(), b'original-signature')
+
+    def test_invalid_integrity_and_corrupt_hook_refuse_changes(self):
+        metadata = plistlib.loads(self.info.read_bytes())
+        metadata['ElectronAsarIntegrity']['Resources/app.asar']['algorithm'] = 'unknown'
+        self.info.write_bytes(plistlib.dumps(metadata))
+        old = self.archive.read_bytes()
+        with self.assertRaises(ValueError): installer.run('install', self.app, self.data)
+        self.assertEqual(self.archive.read_bytes(), old)
+        for content in [self.original + installer.BEGIN, self.original + installer.END]:
+            with self.assertRaises(ValueError): installer.split_hook(content)
+
+    def test_prior_header_mismatch_is_reported_and_final_integrity_is_correct(self):
+        metadata = plistlib.loads(self.info.read_bytes())
+        metadata['ElectronAsarIntegrity']['Resources/app.asar']['hash'] = 'outdated'
+        self.info.write_bytes(plistlib.dumps(metadata))
+        self.assertFalse(installer.inspect(self.app, self.data)[1]['asar_integrity_matches'])
+        installer.run('install', self.app, self.data)
+        self.assertTrue(installer.inspect(self.app, self.data)[1]['asar_integrity_matches'])
+
+    def test_own_hook_changes_preserve_code_before_and_after(self):
+        hooked = installer.hook_entry(self.original, self.data) + b'\n// added later\n'
+        self.assertEqual(installer.hook_entry(hooked, self.data, remove=True), self.original + b'\n// added later\n')
+        new = installer.hook_entry(hooked, self.root / 'new-data')
+        self.assertIn(b'// added later', new)
+        self.assertEqual(new.count(installer.BEGIN), 1)
+
+    def test_doctor_is_read_only_and_stale_status_is_not_live(self):
+        result = installer.run('doctor', self.app, self.data)
+        self.assertEqual(result['state'], 'not_installed')
+        self.assertFalse(self.data.exists())
+        status = self.data / 'status/123.json'
+        status.parent.mkdir(parents=True)
+        status.write_text('{"pid":123,"updatedAt":0}')
+        self.assertEqual(installer.live_status(self.data, [123]), [])
+
+    @unittest.skipUnless(sys.platform == 'darwin' and shutil.which('codesign'), 'macOS 签名验证仅适用于 macOS')
+    def test_real_codesign_on_disposable_fixture_app(self):
+        # 复制系统可执行文件到临时应用，只验证本地签名和 ASAR 校验，不启动它。
+        self.signing.stop()
+        shutil.copyfile('/usr/bin/true', self.exe)
+        self.exe.chmod(0o755)
+        metadata = plistlib.loads(self.info.read_bytes())
+        metadata.update(CFBundlePackageType='APPL', CFBundleVersion='1')
+        self.info.write_bytes(plistlib.dumps(metadata))
+        subprocess.run(['codesign', '--force', '--sign', '-', '--options', 'runtime', str(self.app)], check=True, capture_output=True)
+        result = installer.run('install', self.app, self.data)
+        self.assertEqual(result['state'], 'installed')
+        subprocess.run(['codesign', '--verify', '--deep', '--strict', str(self.app)], check=True, capture_output=True)
+        self.assertTrue(installer.inspect(self.app, self.data)[1]['hook_matches'])
 
 
 if __name__ == '__main__': unittest.main()

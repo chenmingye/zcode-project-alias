@@ -10,7 +10,7 @@ const source = await readFile(new URL('../plugins/zcode-project-alias/runtime/al
 before(async () => {
   const built = await build({ entryPoints: [new URL('./fixture.jsx', import.meta.url).pathname], bundle: true, write: false, format: 'iife' });
   bundle = built.outputFiles[0].text;
-  server = createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end('<div id="root"></div>'); });
+  server = createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(`<style>body{font:14px system-ui;background:#202626;color:#eee;margin:32px}section{width:300px;margin-bottom:24px}section>[role=button]:first-child{display:flex;align-items:center;gap:8px;height:34px}section button{margin-left:auto;border:0;color:inherit;background:#ffffff12;border-radius:6px;padding:5px 9px}.fixture-menu{min-width:140px;background:#292929;border:1px solid #ffffff20;border-radius:10px;padding:5px;box-shadow:0 8px 24px #0005}.fixture-item{padding:8px 12px;outline:0;border-radius:5px}.fixture-item[data-highlighted]{background:#ffffff15}small{display:none}</style><div id="root"></div>`); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
   // 使用独立无头实例和临时 profile，绝不连接用户正在运行的浏览器。
@@ -23,11 +23,20 @@ const ready = async page => {
   await page.addScriptTag({ content: bundle });
   await page.waitForSelector('[data-testid="workspace-item-/a/serverless"]');
   await page.addScriptTag({ content: source });
-  await page.waitForSelector('.zpa-edit');
+  await page.waitForFunction(() => window.__zcodeProjectAlias?.status().projects === 4);
 };
 const label = (page, path = '/a/serverless') => page.locator(`[data-testid="workspace-item-${path}"] > div.truncate`).first();
+const openMenu = async (page, path = '/a/serverless') => {
+  await page.locator(`[data-testid="workspace-item-${path}"]`).first().getByRole('button', { name: '更多', exact: true }).click();
+  await page.getByRole('menuitem', { name: '重命名', exact: true }).waitFor();
+};
+const openEditor = async (page, path = '/a/serverless') => {
+  await openMenu(page, path);
+  await page.getByRole('menuitem', { name: '重命名', exact: true }).click();
+  await page.getByLabel('项目昵称（留空恢复原名）').waitFor();
+};
 const rename = async (page, name, path = '/a/serverless') => {
-  await page.getByRole('button', { name: `设置项目昵称：${path}`, exact: true }).first().click();
+  await openEditor(page, path);
   await page.getByLabel('项目昵称（留空恢复原名）').fill(name);
   await page.getByRole('button', { name: '保存', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('.zpa-dialog'));
@@ -38,10 +47,10 @@ test('同名项目、任务与远端身份独立，保存不触发宿主选择',
   const page = await context.newPage();
   try {
     await ready(page);
-    assert.equal(await page.locator('.zpa-edit').count(), 4);
+    assert.equal(await page.locator('.zpa-edit').count(), 0);
     await rename(page, '生产后端');
     assert.equal(await label(page).textContent(), '生产后端');
-    await page.getByRole('button', { name: '设置项目昵称：/a/serverless', exact: true }).click();
+    await openEditor(page);
     await mkdir(new URL('../test-results/', import.meta.url), { recursive: true });
     await page.screenshot({ path: new URL('../test-results/nickname-dialog.png', import.meta.url).pathname });
     await page.getByRole('button', { name: '取消', exact: true }).click();
@@ -72,11 +81,11 @@ test('多窗口同步、重新打开、热更新与恢复原名；昵称作为�
     await other.waitForFunction(value => document.querySelector('[data-testid="workspace-item-/a/serverless"] > div.truncate').textContent === value, nickname);
     assert.equal(await page.locator('[data-testid="workspace-item-/a/serverless"] img').count(), 0);
     await page.addScriptTag({ content: source });
-    assert.equal(await page.locator('.zpa-edit').count(), 4);
+    assert.equal(await page.locator('.zpa-edit').count(), 0);
     assert.equal(await label(page).textContent(), nickname);
     await ready(page); // 新文档恢复，存储未清理。
     assert.equal(await label(page).textContent(), nickname);
-    await page.getByRole('button', { name: '设置项目昵称：/a/serverless', exact: true }).click();
+    await openEditor(page);
     await page.getByRole('button', { name: '恢复原名', exact: true }).click();
     await other.waitForFunction(() => document.querySelector('[data-testid="workspace-item-/a/serverless"] > div.truncate').textContent === 'serverless');
     assert.equal(await label(page).textContent(), 'serverless');
@@ -91,7 +100,7 @@ test('取消与存储失败不丢数据；移除再导入和晚挂载可恢复',
   const page = await context.newPage();
   try {
     await ready(page); await rename(page, '原昵称');
-    await page.getByRole('button', { name: '设置项目昵称：/a/serverless', exact: true }).click();
+    await openEditor(page);
     await page.getByLabel('项目昵称（留空恢复原名）').fill('不保存');
     await page.getByRole('button', { name: '取消', exact: true }).click();
     assert.equal(await label(page).textContent(), '原昵称');
@@ -99,7 +108,7 @@ test('取消与存储失败不丢数据；移除再导入和晚挂载可恢复',
       window.realSetItem = Storage.prototype.setItem;
       Storage.prototype.setItem = () => { throw new Error('模拟磁盘配额不足'); };
     });
-    await page.getByRole('button', { name: '设置项目昵称：/a/serverless', exact: true }).click();
+    await openEditor(page);
     await page.getByLabel('项目昵称（留空恢复原名）').fill('新昵称');
     await page.getByRole('button', { name: '保存', exact: true }).click();
     assert.match(await page.getByRole('alert').textContent(), /保存失败/);
@@ -107,12 +116,41 @@ test('取消与存储失败不丢数据；移除再导入和晚挂载可恢复',
     assert.equal(await label(page).textContent(), '原昵称');
     await page.getByRole('button', { name: '取消', exact: true }).click();
     await page.evaluate(() => { Storage.prototype.setItem = window.realSetItem; window.renderFixture([]); });
-    await page.waitForFunction(() => !document.querySelector('.zpa-edit'));
+    await page.waitForFunction(() => window.__zcodeProjectAlias.status().projects === 0);
     await page.evaluate(() => window.renderFixture());
     await page.waitForFunction(() => document.querySelector('[data-testid="workspace-item-/a/serverless"] > div.truncate')?.textContent === '原昵称');
-    assert.equal(await page.locator('.zpa-edit').count(), 4);
+    assert.equal(await page.locator('.zpa-edit').count(), 0);
     await page.evaluate(() => window.__zcodeProjectAlias.dispose());
     await page.addScriptTag({ content: source });
     assert.equal(await label(page).textContent(), '原昵称');
+  } finally { await context.close(); }
+});
+
+test('更多菜单保留移除，重命名支持键盘且不触发原操作', async () => {
+  const context = await browser.newContext({ colorScheme: 'dark' });
+  const page = await context.newPage();
+  try {
+    await ready(page);
+    await openMenu(page);
+    assert.deepEqual(await page.getByRole('menuitem').allTextContents(), ['重命名', '× 移除']);
+    await mkdir(new URL('../test-results/', import.meta.url), { recursive: true });
+    await page.screenshot({ path: new URL('../test-results/project-more-menu.png', import.meta.url).pathname });
+    await page.keyboard.press('Home');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), '重命名');
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), '× 移除');
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('Enter');
+    await page.getByLabel('项目昵称（留空恢复原名）').waitFor();
+    assert.equal(await page.getByRole('menu').count(), 0);
+    assert.deepEqual(await page.evaluate(() => window.removals), []);
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await openMenu(page);
+    await page.getByRole('menuitem', { name: '× 移除', exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.removals), ['/a/serverless']);
+    assert.equal(await page.locator('.zpa-dialog').count(), 0);
+    await openMenu(page);
+    await page.evaluate(() => window.__zcodeProjectAlias.dispose());
+    assert.deepEqual(await page.getByRole('menuitem').allTextContents(), ['× 移除']);
   } finally { await context.close(); }
 });
