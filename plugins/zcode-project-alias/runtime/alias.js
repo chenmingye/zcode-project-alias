@@ -1,14 +1,15 @@
 /**
  * ZCode 项目昵称界面。作者：Jason.chen
  * 由本插件自己的 loader.cjs 独立加载；安装器不读取其他插件。
- * 只读 React 节点以取得项目身份，只修改名称文本和本扩展创建的界面，
+ * 只读 React 节点取得项目身份与宿主顺序，在原列表内调整置顶显示、名称和本扩展界面，
  * 不写宿主 store、不调用会话接口。React 私有结构不兼容时跳过该项目。
  */
 (() => {
   'use strict';
   const GLOBAL = '__zcodeProjectAlias';
-  const VERSION = '0.2.1';
+  const VERSION = '0.3.0';
   const PREFIX = 'zcode.project-alias.v1:';
+  const PIN_PREFIX = 'zcode.project-pin.v1:';
   window[GLOBAL]?.dispose();
   const records = new Map();
   const menus = new Map();
@@ -37,6 +38,18 @@
     // 每个项目单独保存，避免多个窗口修改不同项目时整份配置互相覆盖。
     if (name) localStorage.setItem(storageKey(tab), name);
     else localStorage.removeItem(storageKey(tab));
+    error = null;
+    scan();
+  };
+
+  const pinned = tab => {
+    try { return localStorage.getItem(`${PIN_PREFIX}${identity(tab)}`) === '1'; }
+    catch (cause) { error = `无法读取置顶状态：${cause.message}`; return false; }
+  };
+  const togglePin = tab => {
+    const key = `${PIN_PREFIX}${identity(tab)}`;
+    if (pinned(tab)) localStorage.removeItem(key);
+    else localStorage.setItem(key, '1');
     error = null;
     scan();
   };
@@ -143,6 +156,44 @@
     input.select();
   };
 
+  const projectGroups = () => {
+    const groups = new Map();
+    for (const [row] of records) {
+      const item = row.closest('li');
+      const list = item?.parentElement;
+      const tab = getTab(row);
+      if (!tab || !list || list.tagName !== 'UL') continue;
+      if (!groups.has(list)) groups.set(list, new Map());
+      groups.get(list).set(identity(tab), { item, tab });
+    }
+    const result = [];
+    for (const [list, entries] of groups) {
+      // 从宿主当前提交的 children 读取原顺序，不修改 React store。
+      // 项目仅在同一个 ul 内移动，保持原节点、任务子树与事件处理器。
+      const propsKey = Object.keys(list).find(key => key.startsWith('__reactProps$'));
+      const keys = [];
+      const visit = children => {
+        for (const child of Array.isArray(children) ? children : [children]) {
+          if (child?.props?.tab?.kind === 'workspace') keys.push(identity(child.props.tab));
+          else if (child?.props?.children) visit(child.props.children);
+        }
+      };
+      visit(list[propsKey]?.children);
+      if (keys.length !== entries.size || keys.length !== list.children.length ||
+        new Set(keys).size !== keys.length || !keys.every(key => entries.has(key))) continue;
+      result.push({ list, ordered: keys.map(key => entries.get(key)) });
+    }
+    return result;
+  };
+  const sortProjects = (restoreOriginal = false) => {
+    for (const { list, ordered } of projectGroups()) {
+      const target = restoreOriginal ? ordered : [...ordered].sort((a, b) => Number(pinned(b.tab)) - Number(pinned(a.tab)));
+      target.forEach(({ item }, index) => {
+        if (list.children[index] !== item) list.insertBefore(item, list.children[index] || null);
+      });
+    }
+  };
+
   const restore = record => {
     if (record.node.isConnected && record.node.nodeValue === record.applied) record.node.nodeValue = record.original;
     if (record.row.getAttribute('title') === record.title) {
@@ -186,6 +237,7 @@
       record.title = `${nickname || record.original}\n${tab.workspacePath}`;
       if (row.title !== record.title) row.title = record.title;
     }
+    sortProjects();
     scanMenus();
   };
   const scanMenus = () => {
@@ -193,39 +245,61 @@
       const tab = getTab(remove);
       if (!remove.isConnected || !tab || record.key !== identity(tab)) {
         record.dispose(); menus.delete(remove);
-      }
+      } else record.update(tab);
     }
-    // 项目的“移除”项携带路径标识；普通任务菜单、聊天菜单一律不接入。
     for (const remove of document.querySelectorAll('[role="menuitem"][data-testid^="workspace-close-"]')) {
       if (menus.has(remove)) continue;
       const tab = getTab(remove);
       const menu = remove.closest('[role="menu"]');
       if (!menu || !tab || remove.dataset.testid !== `workspace-close-${tab.workspacePath}`) continue;
-      const item = make('div', '', `${remove.className} zpa-rename`);
-      item.setAttribute('role', 'menuitem');
-      item.setAttribute('tabindex', '-1');
-      item.dataset.zpaRename = 'true';
-      const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      icon.setAttribute('viewBox', '0 0 24 24');
-      icon.setAttribute('width', '14'); icon.setAttribute('height', '14');
-      icon.setAttribute('fill', 'none'); icon.setAttribute('stroke', 'currentColor');
-      icon.setAttribute('stroke-width', '1.7'); icon.setAttribute('aria-hidden', 'true');
-      const pencil = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      pencil.setAttribute('d', 'M15 5l4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z');
-      icon.append(pencil); item.append(icon, document.createTextNode('重命名'));
-      remove.before(item);
-      const open = event => {
+      const makeItem = (text, shape) => {
+        const item = make('div', '', `${remove.className} zpa-menu-item`);
+        item.setAttribute('role', 'menuitem'); item.tabIndex = -1;
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', width: '16', height: '16',
+          fill: 'none', stroke: 'currentColor', 'stroke-width': '1.7', 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': 'true' })) icon.setAttribute(key, value);
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', shape); icon.append(path);
+        const label = document.createTextNode(text);
+        item.append(icon, label);
+        return { item, label };
+      };
+      const pin = makeItem(pinned(tab) ? '取消置顶' : '置顶', 'M16 3l5 5-4 1-4 4-1 4-5-5 4-1 4-4zM7 17l-4 4');
+      const edit = makeItem('编辑', 'M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8');
+      edit.item.dataset.zpaEdit = 'true';
+      pin.item.dataset.zpaPin = 'true';
+      const message = make('div', '', 'zpa-menu-error');
+      message.setAttribute('role', 'alert');
+      const update = current => {
+        pin.label.nodeValue = pinned(current) ? '取消置顶' : '置顶';
+        const supported = projectGroups().some(group => group.ordered.some(entry => identity(entry.tab) === identity(current)));
+        pin.item.setAttribute('aria-disabled', String(!supported));
+        pin.item.title = supported ? '' : '当前项目列表结构暂不支持置顶';
+      };
+      update(tab);
+      remove.before(pin.item, edit.item, message);
+      const dismiss = () => menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      const activate = (event, action) => {
         event.preventDefault(); event.stopPropagation();
         const current = getTab(remove);
-        if (!current || identity(current) !== identity(tab)) return;
-        // 先通过宿主自己的 Escape 生命周期关闭菜单，再打开非阻塞式对话框。
-        menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-        const timer = setTimeout(() => { pendingDialogs.delete(timer); if (!disposed) openEditor(current); }, 0);
-        pendingDialogs.add(timer);
+        if (!current || identity(current) !== identity(tab) || remove.dataset.testid !== `workspace-close-${current.workspacePath}`) return;
+        if (action === 'pin') {
+          if (pin.item.getAttribute('aria-disabled') === 'true') return;
+          try { togglePin(current); dismiss(); }
+          catch (cause) { error = `保存置顶失败：${cause.message}`; message.textContent = error; }
+        } else {
+          dismiss();
+          const timer = setTimeout(() => { pendingDialogs.delete(timer); if (!disposed) openEditor(current); }, 0);
+          pendingDialogs.add(timer);
+        }
       };
+      pin.item.addEventListener('click', event => activate(event, 'pin'));
+      edit.item.addEventListener('click', event => activate(event, 'edit'));
       const onKey = event => {
         if (event.target.closest('[role="menu"]') !== menu) return;
-        if (event.target === item && ['Enter', ' '].includes(event.key)) { open(event); return; }
+        if (['Enter', ' '].includes(event.key) && [pin.item, edit.item].includes(event.target)) {
+          activate(event, event.target === pin.item ? 'pin' : 'edit'); return;
+        }
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
         const items = [...menu.querySelectorAll('[role="menuitem"]')].filter(node =>
           node.closest('[role="menu"]') === menu && !node.hasAttribute('data-disabled') && node.getAttribute('aria-disabled') !== 'true');
@@ -234,11 +308,10 @@
           (index + (event.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
         event.preventDefault(); event.stopPropagation(); items[next]?.focus();
       };
-      item.addEventListener('click', open);
-      item.addEventListener('pointermove', () => item.focus());
+      for (const { item } of [pin, edit]) item.addEventListener('pointermove', () => item.focus());
       menu.addEventListener('keydown', onKey, true);
-      menus.set(remove, { key: identity(tab), dispose: () => {
-        item.remove(); menu.removeEventListener('keydown', onKey, true);
+      menus.set(remove, { key: identity(tab), update, dispose: () => {
+        pin.item.remove(); edit.item.remove(); message.remove(); menu.removeEventListener('keydown', onKey, true);
       } });
     }
   };
@@ -250,8 +323,11 @@
   const style = make('style');
   style.id = 'zpa-style';
   style.textContent = `
-    .zpa-rename {display:flex;align-items:center;gap:8px;cursor:default;outline:none;}
-    .zpa-rename:focus,.zpa-rename:hover {background:var(--color-surface-hover,#8882);}
+    .zpa-menu-item {display:flex;align-items:center;gap:8px;cursor:default;outline:none;}
+    .zpa-menu-error {color:#f87171;font-size:12px;max-width:240px;overflow-wrap:anywhere;}
+    .zpa-menu-error:empty {display:none;}
+    .zpa-menu-item[aria-disabled="true"] {opacity:.5;}
+    .zpa-menu-item:focus,.zpa-menu-item:hover {background:var(--color-surface-hover,#8882);}
     .zpa-dialog {--zpa-bg:#292929;--zpa-fg:#ededed;--zpa-border:#ffffff14;--zpa-muted:#999;--zpa-save-bg:#fff;--zpa-save-fg:#242424;box-sizing:border-box;width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto;padding:20px;border:1px solid var(--color-border,var(--zpa-border));border-radius:22px;color:var(--color-foreground,var(--zpa-fg));background:var(--color-card,var(--zpa-bg));font:14px/1.5 var(--font-sans,system-ui,sans-serif);box-shadow:0 20px 70px #0004;}
     .zpa-dialog *, .zpa-dialog *::before, .zpa-dialog *::after {box-sizing:border-box;}
     .zpa-dialog::backdrop {background:#0004;}
@@ -296,7 +372,7 @@
     })) schedule();
   });
   observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-  const onStorage = event => { if (event.key === null || event.key?.startsWith(PREFIX)) schedule(); };
+  const onStorage = event => { if (event.key === null || (event.key?.startsWith(PREFIX) || event.key?.startsWith(PIN_PREFIX))) schedule(); };
   window.addEventListener('storage', onStorage);
   // 慢速兜底处理 React 更新 props 却没有改动 DOM 的情况；没有网络或磁盘轮询。
   const timer = setInterval(schedule, 3000);
@@ -311,6 +387,7 @@
       for (const timer of pendingDialogs) clearTimeout(timer);
       for (const record of menus.values()) record.dispose();
       menus.clear();
+      sortProjects(true);
       for (const record of records.values()) restore(record);
       records.clear(); style.remove();
       delete window[GLOBAL];

@@ -2,7 +2,7 @@
 description: 停用独立项目昵称界面，保留已保存昵称
 ---
 
-定位本插件安装目录，执行 `python3 scripts/install.py uninstall`。它只修改本插件自己的启停配置；独立加载器约 2 秒内撤销菜单项、恢复原显示，昵称保留。不要操作任何其他插件。
+定位本插件安装目录，执行 `python3 scripts/install.py uninstall`。它只修改本插件自己的启停配置；独立加载器约 2 秒内撤销菜单项、恢复原显示与宿主顺序，昵称和置顶记录保留。不要操作任何其他插件。
 
 不要退出、重启或刷新 ZCode，不要操作正在执行的长任务。要完全移除自己的启动标记，等用户的长任务结束并自行退出应用后再执行 `python3 scripts/install.py uninstall --remove-hook`。它会更新 ASAR 完整性和本机签名，仅移除本插件片段，不整体覆盖旧备份。
 

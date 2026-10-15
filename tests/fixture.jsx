@@ -9,7 +9,7 @@ const initial = [
   { kind: 'workspace', workspacePath: '/srv/serverless', workspaceIdentity: 'ssh:A', label: 'serverless' },
   { kind: 'workspace', workspacePath: '/srv/serverless', workspaceIdentity: 'ssh:B', label: 'serverless' },
 ];
-const Workspace = ({ tab, tick }) => <section>
+const Workspace = ({ tab, tick }) => <li data-project-entry={tab.workspaceIdentity || tab.workspacePath}>
   <div role="button" data-testid={`workspace-item-${tab.workspacePath}`} onClick={() => window.hostClicks++}>
     <svg width="18" height="18"/><div className="min-w-0 truncate text-ui-base">{tab.label}</div>
     <Menu.Root>
@@ -22,11 +22,11 @@ const Workspace = ({ tab, tick }) => <section>
   </div>
   <div role="button" data-testid="task-item"><div className="truncate">serverless</div></div>
   <small>{tick}</small>
-</section>;
+</li>;
 const root = createRoot(document.getElementById('root'));
 window.hostClicks = 0;
 window.removals = [];
-window.renderFixture = (tabs = initial, tick = 0) => root.render(<>{tabs.map(tab =>
-  <Workspace key={tab.workspaceIdentity || tab.workspacePath} tab={tab} tick={tick}/>)}</>);
+window.renderFixture = (tabs = initial, tick = 0) => root.render(<ul data-testid="workspace-list">{tabs.map(tab =>
+  <Workspace key={tab.workspaceIdentity || tab.workspacePath} tab={tab} tick={tick}/>)}</ul>);
 window.fixtureTabs = initial;
 window.renderFixture();

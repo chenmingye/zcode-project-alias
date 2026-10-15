@@ -10,7 +10,7 @@ const source = await readFile(new URL('../plugins/zcode-project-alias/runtime/al
 before(async () => {
   const built = await build({ entryPoints: [new URL('./fixture.jsx', import.meta.url).pathname], bundle: true, write: false, format: 'iife' });
   bundle = built.outputFiles[0].text;
-  server = createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(`<style>body{font:14px system-ui;background:#202626;color:#eee;margin:32px}section{width:300px;margin-bottom:24px}section>[role=button]:first-child{display:flex;align-items:center;gap:8px;height:34px}section button{margin-left:auto;border:0;color:inherit;background:#ffffff12;border-radius:6px;padding:5px 9px}.fixture-menu{min-width:140px;background:#292929;border:1px solid #ffffff20;border-radius:10px;padding:5px;box-shadow:0 8px 24px #0005}.fixture-item{padding:8px 12px;outline:0;border-radius:5px}.fixture-item[data-highlighted]{background:#ffffff15}small{display:none}</style><div id="root"></div>`); });
+  server = createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(`<style>body{font:14px system-ui;background:#202626;color:#eee;margin:32px}ul{list-style:none;padding:0;width:300px}li{margin-bottom:24px}li>[role=button]:first-child{display:flex;align-items:center;gap:8px;height:34px}li button{margin-left:auto;border:0;color:inherit;background:#ffffff12;border-radius:6px;padding:5px 9px}.fixture-menu{min-width:140px;background:#292929;border:1px solid #ffffff20;border-radius:10px;padding:5px;box-shadow:0 8px 24px #0005}.fixture-item{padding:8px 12px;outline:0;border-radius:5px}.fixture-item[data-highlighted]{background:#ffffff15}small{display:none}</style><div id="root"></div>`); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
   // 使用独立无头实例和临时 profile，绝不连接用户正在运行的浏览器。
@@ -28,11 +28,11 @@ const ready = async page => {
 const label = (page, path = '/a/serverless') => page.locator(`[data-testid="workspace-item-${path}"] > div.truncate`).first();
 const openMenu = async (page, path = '/a/serverless') => {
   await page.locator(`[data-testid="workspace-item-${path}"]`).first().getByRole('button', { name: '更多', exact: true }).click();
-  await page.getByRole('menuitem', { name: '重命名', exact: true }).waitFor();
+  await page.getByRole('menuitem', { name: '编辑', exact: true }).waitFor();
 };
 const openEditor = async (page, path = '/a/serverless') => {
   await openMenu(page, path);
-  await page.getByRole('menuitem', { name: '重命名', exact: true }).click();
+  await page.getByRole('menuitem', { name: '编辑', exact: true }).click();
   await page.getByLabel('项目昵称（留空恢复原名）').waitFor();
 };
 const rename = async (page, name, path = '/a/serverless') => {
@@ -61,7 +61,7 @@ test('同名项目、任务与远端身份独立，保存不触发宿主选择',
     assert.deepEqual(await page.locator('[data-testid="workspace-item-/srv/serverless"] > div.truncate').allTextContents(), ['远端 A', 'serverless']);
     assert.match(await page.locator('[data-testid="workspace-item-/a/serverless"]').getAttribute('title'), /\/a\/serverless/);
     await page.evaluate(() => window.renderFixture(window.fixtureTabs.map(t => ({ ...t, label: 'serverless新' })), 1));
-    await page.waitForFunction(() => document.querySelector('section small').textContent === '1' &&
+    await page.waitForFunction(() => document.querySelector('[data-project-entry] small').textContent === '1' &&
       document.querySelector('[data-testid="workspace-item-/a/serverless"] > div.truncate').textContent === '生产后端');
     await page.evaluate(() => window.__zcodeProjectAlias.dispose());
     assert.equal(await label(page).textContent(), 'serverless新');
@@ -126,18 +126,18 @@ test('取消与存储失败不丢数据；移除再导入和晚挂载可恢复',
   } finally { await context.close(); }
 });
 
-test('更多菜单保留移除，重命名支持键盘且不触发原操作', async () => {
+test('更多菜单提供置顶和编辑，保留移除且支持键盘', async () => {
   const context = await browser.newContext({ colorScheme: 'dark' });
   const page = await context.newPage();
   try {
     await ready(page);
     await openMenu(page);
-    assert.deepEqual(await page.getByRole('menuitem').allTextContents(), ['重命名', '× 移除']);
+    assert.deepEqual(await page.getByRole('menuitem').allTextContents(), ['置顶', '编辑', '× 移除']);
     await mkdir(new URL('../test-results/', import.meta.url), { recursive: true });
-    await page.screenshot({ path: new URL('../test-results/project-more-menu.png', import.meta.url).pathname });
+    await page.getByRole('menu').screenshot({ path: new URL('../test-results/project-more-menu.png', import.meta.url).pathname });
     await page.keyboard.press('Home');
-    assert.equal(await page.evaluate(() => document.activeElement.textContent), '重命名');
-    await page.keyboard.press('ArrowDown');
+    assert.equal(await page.evaluate(() => document.activeElement.textContent), '置顶');
+    await page.keyboard.press('End');
     assert.equal(await page.evaluate(() => document.activeElement.textContent), '× 移除');
     await page.keyboard.press('ArrowUp');
     await page.keyboard.press('Enter');
@@ -185,5 +185,63 @@ test('编辑项目展示真实源文件夹，关闭不保存，原名保存无�
     await page.keyboard.press('Escape');
     assert.equal(await panel.count(), 0);
     assert.equal(await label(page).textContent(), '生产管理端');
+  } finally { await context.close(); }
+});
+
+test('置顶与取消置顶跨窗口持久化，保留原节点、宿主排序与编辑功能', async () => {
+  const context = await browser.newContext({ colorScheme: 'dark' });
+  const page = await context.newPage();
+  const other = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const order = target => target.locator('[data-testid="workspace-list"] > li').evaluateAll(nodes => nodes.map(node => node.dataset.projectEntry));
+  const pin = async (target, path, action) => {
+    await openMenu(target, path);
+    await target.getByRole('menuitem', { name: action, exact: true }).click();
+  };
+  try {
+    await ready(page); await ready(other);
+    await page.evaluate(() => { window.originalNode = document.querySelector('[data-project-entry="/b/serverless"]'); });
+    await pin(page, '/b/serverless', '置顶');
+    assert.deepEqual(await order(page), ['/b/serverless', '/a/serverless', 'ssh:A', 'ssh:B']);
+    await other.waitForFunction(() => document.querySelector('[data-testid="workspace-list"] > li').dataset.projectEntry === '/b/serverless');
+    assert.equal(await page.evaluate(() => window.originalNode === document.querySelector('[data-project-entry="/b/serverless"]')), true);
+    await pin(page, '/a/serverless', '置顶');
+    assert.deepEqual(await order(page), ['/a/serverless', '/b/serverless', 'ssh:A', 'ssh:B']);
+    await pin(page, '/a/serverless', '取消置顶');
+    await rename(page, '置顶项目', '/b/serverless');
+    assert.equal(await label(page, '/b/serverless').textContent(), '置顶项目');
+    await ready(page);
+    assert.deepEqual(await order(page), ['/b/serverless', '/a/serverless', 'ssh:A', 'ssh:B']);
+    await page.addScriptTag({ content: source });
+    assert.deepEqual(await order(page), ['/b/serverless', '/a/serverless', 'ssh:A', 'ssh:B']);
+    // 宿主重排后，以最新提交的顺序作未置顶项目的基线。
+    await page.evaluate(() => window.renderFixture([...window.fixtureTabs].reverse(), 9));
+    await page.waitForFunction(() => document.querySelector('[data-project-entry] small').textContent === '9');
+    await page.waitForFunction(() => document.querySelector('[data-testid="workspace-list"] > li').dataset.projectEntry === '/b/serverless');
+    assert.deepEqual(await order(page), ['/b/serverless', 'ssh:B', 'ssh:A', '/a/serverless']);
+    await pin(page, '/b/serverless', '取消置顶');
+    assert.deepEqual(await order(page), ['ssh:B', 'ssh:A', '/b/serverless', '/a/serverless']);
+    await pin(page, '/a/serverless', '置顶');
+    await page.evaluate(() => window.__zcodeProjectAlias.dispose());
+    assert.deepEqual(await order(page), ['ssh:B', 'ssh:A', '/b/serverless', '/a/serverless']);
+    assert.equal(await page.locator('[data-project-entry]').count(), 4);
+    assert.deepEqual(errors, []);
+    assert.deepEqual(await page.evaluate(() => window.removals), []);
+    assert.equal(await page.evaluate(() => window.hostClicks), 0);
+  } finally { await context.close(); }
+});
+
+test('置顶保存失败保持原顺序，错误可见，不误报为已置顶', async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await ready(page);
+    await openMenu(page, '/b/serverless');
+    await page.evaluate(() => { Storage.prototype.setItem = () => { throw new Error('模拟存储失败'); }; });
+    await page.getByRole('menuitem', { name: '置顶', exact: true }).click();
+    assert.match(await page.getByRole('alert').textContent(), /保存置顶失败/);
+    assert.equal(await page.locator('[data-testid="workspace-list"] > li').first().getAttribute('data-project-entry'), '/a/serverless');
+    assert.equal(await page.getByRole('menuitem', { name: '取消置顶', exact: true }).count(), 0);
   } finally { await context.close(); }
 });
