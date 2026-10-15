@@ -33,11 +33,14 @@ test('独立加载器在没有其他插件时注入、热更新、停用，隔�
   const windows = [main, remote, webview, otherFile];
   const ownLoader = path.join(dir, 'loader.cjs');
   fs.writeFileSync(ownLoader, loader);
+  fs.writeFileSync(path.join(dir, 'name-suggestions.cjs'), '// fixture service');
   fs.writeFileSync(path.join(dir, 'alias.js'), source('first'));
   fs.writeFileSync(path.join(dir, 'enabled.json'), '{"enabled":true,"runtimeVersion":"0.2.0"}');
   let tick;
+  const suggestions = [];
   const context = vm.createContext({
     require: name => ({ electron: { app, webContents: { getAllWebContents: () => windows } },
+      './name-suggestions.cjs': { suggest: async workspace => { suggestions.push(workspace); return { candidates: [] }; } },
       'node:fs': fs, 'node:path': path, 'node:crypto': crypto, 'node:vm': vm, 'node:url': url })[name],
     __dirname: dir, __filename: ownLoader,
     process: { pid: 43210, resourcesPath: resourcePath }, URL,
@@ -49,6 +52,16 @@ test('独立加载器在没有其他插件时注入、热更新、停用，隔�
     await settle();
     assert.equal(main.context.window.__zcodeProjectAlias.status().label, 'first');
     assert.deepEqual(windows.slice(1).map(w => w.calls()), [0, 0, 0]);
+    const validId = '11111111-1111-4111-8111-111111111111';
+    main.context.window.__zcodeProjectAlias.takeNameRequests = () => {
+      delete main.context.window.__zcodeProjectAlias.takeNameRequests;
+      return { requests: [{ id: validId, workspacePath: '/registered/project', remote: false },
+        { id: validId, workspacePath: '/not-registered', remote: false }], workspaces: [null, { workspacePath: '/registered/project', remote: false }] };
+    };
+    main.context.window.__zcodeProjectAlias.receiveNameSuggestions = value => { main.context.reply = value; };
+    tick(); await settle();
+    assert.deepEqual(suggestions, ['/registered/project']);
+    assert.equal(main.context.reply.id, validId);
     fs.writeFileSync(path.join(dir, 'alias.js'), source('second'));
     tick(); await settle();
     assert.equal(main.context.window.__zcodeProjectAlias.status().label, 'second');

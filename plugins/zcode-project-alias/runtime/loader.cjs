@@ -9,13 +9,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const vm = require('node:vm');
+const { suggest } = require('./name-suggestions.cjs');
 const { fileURLToPath } = require('node:url');
-const VERSION = '0.2.0';
+const VERSION = '0.4.0';
 const ROOT = __dirname;
 const UI = path.join(ROOT, 'alias.js');
 const CONFIG = path.join(ROOT, 'enabled.json');
 const STATUS = path.join(ROOT, 'status', `${process.pid}.json`);
 const HASH = crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');
+const SERVICE_HASH = crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'name-suggestions.cjs'))).digest('hex');
 if (!globalThis.__zcodeProjectAliasLoader) {
   const states = new Map();
   const attached = new WeakSet();
@@ -36,7 +38,7 @@ if (!globalThis.__zcodeProjectAliasLoader) {
     if (stopped) return;
     try {
       fs.mkdirSync(path.dirname(STATUS), { recursive: true, mode: 0o700 });
-      const value = JSON.stringify({ pid: process.pid, version: VERSION, loaderHash: HASH,
+      const value = JSON.stringify({ pid: process.pid, version: VERSION, loaderHash: HASH, serviceHash: SERVICE_HASH,
         appVersion: app.getVersion(), updatedAt: Date.now(), error: lastError,
         windows: [...states].map(([id, state]) => ({ id, ...state })) });
       const temp = `${STATUS}.tmp`;
@@ -65,10 +67,27 @@ if (!globalThis.__zcodeProjectAliasLoader) {
           const state = await wc.executeJavaScript('window.__zcodeProjectAlias?.status() ?? null');
           if (stopped || current !== generation || wc.isDestroyed()) return;
           const previous = states.get(wc.id);
+          if (enabled) await wc.executeJavaScript('window.__zcodeProjectAliasNamesAvailable = true');
           if (enabled && (previous?.sourceHash !== sourceHash || state?.version !== config.runtimeVersion)) {
             await wc.executeJavaScript(source);
           } else if (!enabled && state) {
             await wc.executeJavaScript('window.__zcodeProjectAlias?.dispose()');
+          }
+          if (enabled) {
+            const bundle = await wc.executeJavaScript('window.__zcodeProjectAlias?.takeNameRequests?.() ?? null');
+            const requests = Array.isArray(bundle?.requests) ? bundle.requests.slice(0, 2) : [];
+            const available = Array.isArray(bundle?.workspaces) ? bundle.workspaces : [];
+            for (const request of requests) {
+              if (!request || typeof request.id !== 'string' || !/^[a-f0-9-]{36}$/i.test(request.id) ||
+                request.remote || typeof request.workspacePath !== 'string' ||
+                !available.some(row => row && !row.remote && row.workspacePath === request.workspacePath)) continue;
+              const result = await suggest(request.workspacePath);
+              if (stopped || current !== generation || !trusted(wc)) break;
+              const payload = JSON.stringify({ id: request.id, result }).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+              await wc.executeJavaScript(`window.__zcodeProjectAlias?.receiveNameSuggestions?.(${payload})`);
+            }
+          } else {
+            await wc.executeJavaScript('delete window.__zcodeProjectAliasNamesAvailable');
           }
           const result = await wc.executeJavaScript('window.__zcodeProjectAlias?.status() ?? null');
           states.set(wc.id, { enabled, sourceHash, runtime: result, error: null });

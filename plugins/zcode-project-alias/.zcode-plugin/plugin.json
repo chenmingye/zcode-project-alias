@@ -1,7 +1,7 @@
 {
   "name": "zcode-project-alias",
-  "version": "0.3.0",
-  "description": "独立项目管理：更多菜单支持置顶和编辑，在编辑项目中修改昵称",
+  "version": "0.4.0",
+  "description": "独立项目管理：置顶、编辑，以及从本地 SVN/Git 识别并复制昵称前缀",
   "author": {
     "name": "Jason.chen"
   },

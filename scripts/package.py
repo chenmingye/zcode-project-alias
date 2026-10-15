@@ -16,7 +16,7 @@ assert entry['name'] == manifest['name'] == 'zcode-project-alias'
 assert entry['version'] == manifest['version']
 assert (root / entry['source']).resolve() == plugin
 assert list((plugin / 'commands').glob('*.md'))
-for name in ['alias.js', 'loader.cjs']:
+for name in ['alias.js', 'loader.cjs', 'name-suggestions.cjs']:
     subprocess.run(['node', '--check', str(plugin / 'runtime' / name)], check=True)
 output = root / 'dist'
 output.mkdir(exist_ok=True)

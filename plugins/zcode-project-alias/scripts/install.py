@@ -18,7 +18,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 BEGIN = b'\n/* BEGIN ZCODE PROJECT ALIAS BOOT v2 */\n'
 END = b'\n/* END ZCODE PROJECT ALIAS BOOT v2 */\n'
-VERSION = '0.3.0'
+VERSION = '0.4.0'
 
 
 def digest(data):
@@ -191,14 +191,16 @@ def inspect(app, data_dir):
     loader_hash = digest(own_loader.read_bytes()) if own_loader.exists() else None
     ui = data_dir / 'alias.js'
     ui_hash = digest(ui.read_bytes()) if ui.exists() else None
-    loader_changed = any(row.get('loaderHash') != loader_hash for row in live)
+    service = data_dir / 'name-suggestions.cjs'
+    service_hash = digest(service.read_bytes()) if service.exists() else None
+    loader_changed = any(row.get('loaderHash') != loader_hash or row.get('serviceHash') != service_hash for row in live)
     return asar, {
         'version': VERSION, 'app': str(app), 'app_version': metadata.get('CFBundleShortVersionString'),
         'data_dir': str(data_dir), 'asar_integrity_matches': integrity_matches, 'hook_installed': payload is not None,
         'hook_matches': installed, 'running_pids': pids, 'live': live,
         'enabled': enabled, 'loader_restart_required': loader_changed,
         'restart_required': bool(pids) and (not bool(live) or loader_changed),
-        'live_verified': enabled and any(r.get('loaderHash') == loader_hash and any(
+        'live_verified': enabled and any(r.get('loaderHash') == loader_hash and r.get('serviceHash') == service_hash and any(
             w.get('enabled') and w.get('sourceHash') == ui_hash and w.get('runtime', {}).get('version') == VERSION
             for w in r.get('windows', []) if isinstance(w.get('runtime'), dict)) for r in live),
         'state': ('installed' if enabled else 'disabled') if installed else 'not_installed',
@@ -206,7 +208,7 @@ def inspect(app, data_dir):
 
 
 def prepare_runtime(data_dir):
-    files = {name: (ROOT / 'runtime' / name).read_bytes() for name in ['alias.js', 'loader.cjs']}
+    files = {name: (ROOT / 'runtime' / name).read_bytes() for name in ['alias.js', 'loader.cjs', 'name-suggestions.cjs']}
     for content in files.values():
         syntax_check(content)
     # 运行时代码就绪后最后打开配置开关，避免已有加载器读到一半的文件。

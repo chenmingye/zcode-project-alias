@@ -1,11 +1,11 @@
 {
   "name": "zcode-project-alias-dev",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'",
-    "check": "node --check plugins/zcode-project-alias/runtime/alias.js && node --check plugins/zcode-project-alias/runtime/loader.cjs"
+    "check": "node --check plugins/zcode-project-alias/runtime/alias.js && node --check plugins/zcode-project-alias/runtime/loader.cjs && node --check plugins/zcode-project-alias/runtime/name-suggestions.cjs"
   },
   "devDependencies": {
     "@radix-ui/react-dropdown-menu": "^2.2.1",

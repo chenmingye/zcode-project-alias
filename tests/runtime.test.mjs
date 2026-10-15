@@ -245,3 +245,63 @@ test('置顶保存失败保持原顺序，错误可见，不误报为已置顶',
     assert.equal(await page.getByRole('menuitem', { name: '取消置顶', exact: true }).count(), 0);
   } finally { await context.close(); }
 });
+
+test('仓库名称候选可填前缀和复制，识别结果不覆盖草稿，保存前不改昵称', async () => {
+  const context = await browser.newContext({ colorScheme: 'dark' });
+  const page = await context.newPage();
+  try {
+    await ready(page);
+    await page.evaluate(() => {
+      window.__zcodeProjectAliasNamesAvailable = true;
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.copiedName = text; } } });
+    });
+    await openEditor(page);
+    await page.getByLabel('项目昵称（留空恢复原名）').fill('正在编辑的草稿');
+    const bundle = await page.evaluate(() => window.__zcodeProjectAlias.takeNameRequests());
+    assert.equal(bundle.requests.length, 1);
+    assert.equal(bundle.requests[0].workspacePath, '/a/serverless');
+    assert.ok(bundle.workspaces.some(row => row.workspacePath === '/a/serverless' && !row.remote));
+    await page.evaluate(id => window.__zcodeProjectAlias.receiveNameSuggestions({ id, result: {
+      message: '点击候选填入前缀，再输入管理端或现场作业；也可以复制',
+      candidates: [{ name: 'MES 255/', source: 'SVN 仓库' }, { name: 'MES 5.5/', source: 'SVN 路径' }],
+    } }), bundle.requests[0].id);
+    assert.equal(await page.getByLabel('项目昵称（留空恢复原名）').inputValue(), '正在编辑的草稿');
+    await page.getByRole('button', { name: '复制候选名称：MES 255/', exact: true }).click();
+    assert.equal(await page.evaluate(() => window.copiedName), 'MES 255/');
+    assert.equal(await page.getByLabel('项目昵称（留空恢复原名）').inputValue(), '正在编辑的草稿');
+    await page.getByRole('button', { name: '使用候选名称：MES 255/', exact: true }).click();
+    assert.equal(await page.getByLabel('项目昵称（留空恢复原名）').inputValue(), 'MES 255/');
+    assert.equal(await label(page).textContent(), 'serverless');
+    await page.keyboard.type('管理端');
+    await mkdir(new URL('../test-results/', import.meta.url), { recursive: true });
+    await page.getByRole('dialog').screenshot({ path: new URL('../test-results/name-suggestions.png', import.meta.url).pathname });
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    assert.equal(await label(page).textContent(), 'MES 255/管理端');
+  } finally { await context.close(); }
+});
+
+test('候选结果按当前弹窗隔离，远端与旧加载器不请求本机仓库', async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  try {
+    await ready(page);
+    await openEditor(page);
+    assert.match(await page.locator('.zpa-suggestions-note').textContent(), /新版独立加载器/);
+    assert.equal((await page.evaluate(() => window.__zcodeProjectAlias.takeNameRequests())).requests.length, 0);
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await page.evaluate(() => { window.__zcodeProjectAliasNamesAvailable = true; });
+    await openEditor(page);
+    const first = (await page.evaluate(() => window.__zcodeProjectAlias.takeNameRequests())).requests[0];
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await openEditor(page, '/b/serverless');
+    const second = (await page.evaluate(() => window.__zcodeProjectAlias.takeNameRequests())).requests[0];
+    await page.evaluate(id => window.__zcodeProjectAlias.receiveNameSuggestions({ id, result: { candidates: [{ name: '错误项目/', source: '旧请求' }] } }), first.id);
+    assert.equal(await page.locator('.zpa-candidate').count(), 0);
+    await page.evaluate(id => window.__zcodeProjectAlias.receiveNameSuggestions({ id, result: { candidates: [{ name: 'MES 5.5/', source: 'Git 仓库' }] } }), second.id);
+    assert.equal(await page.locator('.zpa-candidate').count(), 1);
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    await openEditor(page, '/srv/serverless');
+    assert.match(await page.locator('.zpa-suggestions-note').textContent(), /远程项目/);
+    assert.equal((await page.evaluate(() => window.__zcodeProjectAlias.takeNameRequests())).requests.length, 0);
+  } finally { await context.close(); }
+});

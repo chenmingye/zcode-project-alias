@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   const GLOBAL = '__zcodeProjectAlias';
-  const VERSION = '0.3.0';
+  const VERSION = '0.4.0';
   const PREFIX = 'zcode.project-alias.v1:';
   const PIN_PREFIX = 'zcode.project-pin.v1:';
   window[GLOBAL]?.dispose();
@@ -17,6 +17,8 @@
   let disposed = false;
   let scheduled = false;
   let dialog = null;
+  let nameSession = null;
+  const nameRequests = [];
   let error = null;
   let scanned = 0;
 
@@ -67,6 +69,9 @@
   };
 
   const closeDialog = () => {
+    if (nameSession) clearTimeout(nameSession.timer);
+    nameSession = null;
+    nameRequests.length = 0;
     if (!dialog) return;
     const active = dialog;
     dialog = null;
@@ -129,6 +134,12 @@
     folderInfo.append(folderName, path);
     folder.append(folderInfo);
     source.append(sourceTitle, folder);
+    const suggestions = make('section', '', 'zpa-suggestions');
+    const suggestionsTitle = make('h3', '候选名称');
+    const suggestionsNote = make('p', '', 'zpa-suggestions-note');
+    suggestionsNote.setAttribute('role', 'status');
+    const suggestionsList = make('div', '', 'zpa-suggestions-list');
+    suggestions.append(suggestionsTitle, suggestionsNote, suggestionsList);
     const message = make('p', '', 'zpa-error');
     message.setAttribute('role', 'alert');
     const actions = make('div', '', 'zpa-actions');
@@ -147,13 +158,61 @@
     form.addEventListener('submit', event => { event.preventDefault(); commit(input.value); });
     panel.addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
     actions.append(reset, cancel, save);
-    form.append(header, label, nameField, source, message, actions);
+    form.append(header, label, nameField, suggestions, source, message, actions);
     panel.append(form);
     document.body.append(panel);
     dialog = panel;
     panel.showModal();
+    beginNameSuggestions(tab, panel, input, suggestionsNote, suggestionsList);
     input.focus();
     input.select();
+  };
+
+  const receiveNameSuggestions = ({ id, result }) => {
+    const session = nameSession;
+    if (!session || session.id !== id || !session.panel.isConnected || disposed) return;
+    clearTimeout(session.timer);
+    session.note.textContent = result.message || '点击候选填入前缀，再继续输入后缀；也可以复制';
+    session.list.replaceChildren();
+    for (const candidate of (Array.isArray(result.candidates) ? result.candidates : []).slice(0, 8)) {
+      if (typeof candidate.name !== 'string' || candidate.name.length > 80 || /[\u0000-\u001f\u007f]/u.test(candidate.name)) continue;
+      const row = make('div', '', 'zpa-candidate');
+      const use = make('button', candidate.name, 'zpa-candidate-use');
+      use.type = 'button';
+      use.setAttribute('aria-label', `使用候选名称：${candidate.name}`);
+      use.title = `${candidate.source || '目录'}：点击填入，尚未保存`;
+      const source = make('span', candidate.source || '目录', 'zpa-candidate-source');
+      const copy = make('button', '复制', 'zpa-candidate-copy');
+      copy.type = 'button';
+      copy.setAttribute('aria-label', `复制候选名称：${candidate.name}`);
+      use.addEventListener('click', () => {
+        session.input.value = candidate.name;
+        session.input.focus();
+        session.input.setSelectionRange(candidate.name.length, candidate.name.length);
+      });
+      copy.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(candidate.name); copy.textContent = '已复制'; }
+        catch { session.note.textContent = '复制失败，可以点击候选名称直接填入'; }
+      });
+      row.append(use, source, copy); session.list.append(row);
+    }
+  };
+  const beginNameSuggestions = (tab, panel, input, note, list) => {
+    const id = crypto.randomUUID();
+    nameSession = { id, panel, input, note, list, timer: null };
+    if (tab.workspaceIdentity || tab.remoteSessionId || tab.remoteTarget) {
+      note.textContent = '远程项目暂不读取本机仓库信息，仍可手动编辑名称';
+      return;
+    }
+    if (!window.__zcodeProjectAliasNamesAvailable) {
+      note.textContent = '仓库候选需要新版独立加载器；更新后在方便时正常启动 ZCode，当前仍可手动编辑';
+      return;
+    }
+    note.textContent = '正在只读识别本地 SVN / Git 项目名称…';
+    nameRequests.push({ id, workspacePath: tab.workspacePath, remote: false });
+    nameSession.timer = setTimeout(() => {
+      if (nameSession?.id === id) note.textContent = '识别暂未完成，仍可手动编辑；不会覆盖已输入的内容';
+    }, 12000);
   };
 
   const projectGroups = () => {
@@ -341,6 +400,16 @@
     .zpa-name-icon {flex:none;display:grid;place-items:center;width:40px;border-right:1px solid var(--color-border,var(--zpa-border));}
     .zpa-dialog input {flex:1;min-width:0;width:100%;padding:0 10px;border:0;outline:0;border-radius:0 12px 12px 0;font:inherit;color:inherit;background:transparent;}
     .zpa-source {width:100%;margin:14px 0 0;}
+    .zpa-suggestions {width:100%;margin:14px 0 0;}
+    .zpa-suggestions h3 {font-size:14px;font-weight:500;margin:0 0 6px;}
+    .zpa-suggestions-note {font-size:11px;color:var(--color-foreground-subtle,var(--zpa-muted));margin:0 0 8px;}
+    .zpa-suggestions-list {display:flex;flex-direction:column;gap:5px;}
+    .zpa-candidate {display:flex;align-items:center;gap:8px;min-width:0;border:1px solid var(--color-border,var(--zpa-border));border-radius:8px;padding:5px 8px;}
+    .zpa-candidate-use {min-width:0;text-align:left;overflow-wrap:anywhere;background:transparent;color:inherit;padding:0;}
+    .zpa-candidate-use:hover {text-decoration:underline;}
+    .zpa-candidate-source {margin-left:auto;flex-shrink:0;font-size:10px;color:var(--color-foreground-subtle,var(--zpa-muted));}
+    .zpa-candidate-copy {flex:none;font-size:11px;background:transparent;color:var(--color-foreground-subtle,var(--zpa-muted));padding:2px;}
+
     .zpa-source h3 {font-size:14px;font-weight:500;margin:0 0 8px;}
     .zpa-folder {display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--color-border,var(--zpa-border));border-radius:10px;}
     .zpa-folder > svg {flex:none;color:var(--color-foreground-subtle,var(--zpa-muted));}
@@ -378,6 +447,13 @@
   const timer = setInterval(schedule, 3000);
   window[GLOBAL] = {
     version: VERSION,
+    takeNameRequests: () => ({
+      requests: nameRequests.splice(0, 2),
+      workspaces: [...records.keys()].map(getTab).filter(Boolean).map(tab => ({
+        workspacePath: tab.workspacePath, remote: !!(tab.workspaceIdentity || tab.remoteSessionId || tab.remoteTarget),
+      })),
+    }),
+    receiveNameSuggestions,
     status: () => ({ version: VERSION, projects: records.size, scans: scanned, error }),
     dispose: () => {
       disposed = true;
