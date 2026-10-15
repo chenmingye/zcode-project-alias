@@ -18,7 +18,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 BEGIN = b'\n/* BEGIN ZCODE PROJECT ALIAS BOOT v2 */\n'
 END = b'\n/* END ZCODE PROJECT ALIAS BOOT v2 */\n'
-VERSION = '0.2.0'
+VERSION = '0.2.1'
 
 
 def digest(data):

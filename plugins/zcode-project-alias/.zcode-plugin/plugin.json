@@ -1,6 +1,6 @@
 {
   "name": "zcode-project-alias",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "独立项目昵称插件：在项目更多菜单中重命名，保留真实目录与会话归属",
   "author": {
     "name": "Jason.chen"

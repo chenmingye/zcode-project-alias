@@ -154,3 +154,36 @@ test('更多菜单保留移除，重命名支持键盘且不触发原操作', as
     assert.deepEqual(await page.getByRole('menuitem').allTextContents(), ['× 移除']);
   } finally { await context.close(); }
 });
+
+test('编辑项目展示真实源文件夹，关闭不保存，原名保存无冗余记录，适配主题和窄窗口', async () => {
+  const context = await browser.newContext({ colorScheme: 'dark' });
+  const page = await context.newPage();
+  try {
+    await ready(page);
+    await openEditor(page);
+    const panel = page.getByRole('dialog', { name: '编辑项目', exact: true });
+    assert.equal(await panel.locator('.zpa-folder-name').textContent(), 'serverless');
+    assert.equal(await panel.locator('.zpa-path').textContent(), '/a/serverless');
+    assert.equal(await panel.getByLabel('项目昵称（留空恢复原名）').inputValue(), 'serverless');
+    await panel.getByLabel('项目昵称（留空恢复原名）').fill('不应保存');
+    await panel.getByRole('button', { name: '关闭', exact: true }).click();
+    assert.equal(await label(page).textContent(), 'serverless');
+    await openEditor(page);
+    assert.equal(await page.getByLabel('项目昵称（留空恢复原名）').inputValue(), 'serverless');
+    await page.getByRole('button', { name: '保存', exact: true }).click();
+    assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('zcode.project-alias.v1:')).length), 0);
+    await rename(page, '生产管理端');
+    await openEditor(page);
+    await mkdir(new URL('../test-results/', import.meta.url), { recursive: true });
+    await panel.screenshot({ path: new URL('../test-results/edit-project-dark.png', import.meta.url).pathname });
+    await page.emulateMedia({ colorScheme: 'light' });
+    await panel.screenshot({ path: new URL('../test-results/edit-project-light.png', import.meta.url).pathname });
+    await page.setViewportSize({ width: 360, height: 640 });
+    const bounds = await panel.boundingBox();
+    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 360);
+    await page.getByLabel('项目昵称（留空恢复原名）').fill('丢弃草稿');
+    await page.keyboard.press('Escape');
+    assert.equal(await panel.count(), 0);
+    assert.equal(await label(page).textContent(), '生产管理端');
+  } finally { await context.close(); }
+});

@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   const GLOBAL = '__zcodeProjectAlias';
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const PREFIX = 'zcode.project-alias.v1:';
   window[GLOBAL]?.dispose();
   const records = new Map();
@@ -67,35 +67,66 @@
     return node;
   };
 
+  const folderIcon = () => {
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    for (const [key, value] of Object.entries({ viewBox: '0 0 24 24', width: '20', height: '20',
+      fill: 'none', stroke: 'currentColor', 'stroke-width': '1.6', 'stroke-linecap': 'round',
+      'stroke-linejoin': 'round', 'aria-hidden': 'true' })) icon.setAttribute(key, value);
+    const shape = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    shape.setAttribute('d', 'M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l3 3h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2ZM2 10h20');
+    icon.append(shape);
+    return icon;
+  };
   const openEditor = tab => {
     closeDialog();
     const panel = make('dialog', '', 'zpa-dialog');
     panel.setAttribute('aria-labelledby', 'zpa-title');
     const form = make('form');
-    const title = make('h2', '设置项目昵称');
+    const header = make('div', '', 'zpa-header');
+    const title = make('h2', '编辑项目');
     title.id = 'zpa-title';
-    const path = make('p', tab.workspacePath, 'zpa-path');
-    const label = make('label', '项目昵称（留空恢复原名）');
+    const close = make('button', '×', 'zpa-close');
+    close.type = 'button';
+    close.setAttribute('aria-label', '关闭');
+    close.addEventListener('click', closeDialog);
+    header.append(title, close);
+    const label = make('label', '项目昵称（留空恢复原名）', 'zpa-sr-only');
+    const nameField = make('div', '', 'zpa-name-field');
+    const nameIcon = make('span', '', 'zpa-name-icon');
+    nameIcon.append(folderIcon());
     const input = make('input');
     input.id = 'zpa-name';
     input.name = 'nickname';
     input.maxLength = 80;
-    input.value = read(tab);
+    input.value = read(tab) || basename(tab.workspacePath);
     input.placeholder = basename(tab.workspacePath);
     input.autocomplete = 'off';
     label.htmlFor = input.id;
+    nameField.append(nameIcon, input);
+    // 源文件夹只读展示真实身份，不把“重命名显示名称”扩展成目录管理。
+    const source = make('section', '', 'zpa-source');
+    source.setAttribute('aria-labelledby', 'zpa-source-title');
+    const sourceTitle = make('h3', '源文件夹');
+    sourceTitle.id = 'zpa-source-title';
+    const folder = make('div', '', 'zpa-folder');
+    folder.append(folderIcon());
+    const folderInfo = make('div', '', 'zpa-folder-info');
+    const folderName = make('div', basename(tab.workspacePath), 'zpa-folder-name');
+    const path = make('div', tab.workspacePath, 'zpa-path');
+    folderInfo.append(folderName, path);
+    folder.append(folderInfo);
+    source.append(sourceTitle, folder);
     const message = make('p', '', 'zpa-error');
     message.setAttribute('role', 'alert');
     const actions = make('div', '', 'zpa-actions');
-    const reset = make('button', '恢复原名');
+    const reset = make('button', '恢复原名', 'zpa-reset');
     reset.type = 'button';
-    const cancel = make('button', '取消');
+    const cancel = make('button', '取消', 'zpa-cancel');
     cancel.type = 'button';
-    const save = make('button', '保存');
+    const save = make('button', '保存', 'zpa-primary');
     save.type = 'submit';
-    save.className = 'zpa-primary';
     const commit = value => {
-      try { write(tab, value); closeDialog(); }
+      try { write(tab, value.trim() === basename(tab.workspacePath) ? '' : value); closeDialog(); }
       catch (cause) { message.textContent = `保存失败：${cause.message}`; }
     };
     reset.addEventListener('click', () => commit(''));
@@ -103,7 +134,7 @@
     form.addEventListener('submit', event => { event.preventDefault(); commit(input.value); });
     panel.addEventListener('cancel', event => { event.preventDefault(); closeDialog(); });
     actions.append(reset, cancel, save);
-    form.append(title, path, label, input, message, actions);
+    form.append(header, label, nameField, source, message, actions);
     panel.append(form);
     document.body.append(panel);
     dialog = panel;
@@ -221,17 +252,37 @@
   style.textContent = `
     .zpa-rename {display:flex;align-items:center;gap:8px;cursor:default;outline:none;}
     .zpa-rename:focus,.zpa-rename:hover {background:var(--color-surface-hover,#8882);}
-    .zpa-dialog {box-sizing:border-box;width:min(460px,calc(100vw - 32px));padding:24px;border:1px solid var(--color-border,#8886);border-radius:14px;color:var(--color-foreground,#eee);background:var(--color-card,#242424);font-family:inherit;box-shadow:0 16px 48px #0005;}
-    .zpa-dialog::backdrop {background:#0005;}
-    .zpa-dialog h2 {font-size:18px;margin:0 0 12px;}
-    .zpa-path {font-size:12px;opacity:.7;overflow-wrap:anywhere;user-select:text;}
-    .zpa-dialog label {display:block;margin:20px 0 8px;font-size:13px;}
-    .zpa-dialog input {box-sizing:border-box;width:100%;padding:9px 10px;border:1px solid #8888;border-radius:6px;font:inherit;color:inherit;background:transparent;}
-    .zpa-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:16px;}
-    .zpa-actions button {padding:6px 12px;border:1px solid #8886;border-radius:6px;cursor:pointer;font:inherit;background:transparent;color:inherit;}
-    .zpa-actions .zpa-primary {background:#2563eb;color:white;border-color:#2563eb;}
-    .zpa-error {color:#f87171;font-size:12px;}
-    @media(prefers-color-scheme:light){.zpa-dialog {color:var(--color-foreground,#222);background:var(--color-card,#fff);}}
+    .zpa-dialog {--zpa-bg:#292929;--zpa-fg:#ededed;--zpa-border:#ffffff14;--zpa-muted:#999;--zpa-save-bg:#fff;--zpa-save-fg:#242424;box-sizing:border-box;width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto;padding:20px;border:1px solid var(--color-border,var(--zpa-border));border-radius:22px;color:var(--color-foreground,var(--zpa-fg));background:var(--color-card,var(--zpa-bg));font:14px/1.5 var(--font-sans,system-ui,sans-serif);box-shadow:0 20px 70px #0004;}
+    .zpa-dialog *, .zpa-dialog *::before, .zpa-dialog *::after {box-sizing:border-box;}
+    .zpa-dialog::backdrop {background:#0004;}
+    .zpa-header {display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;}
+    .zpa-dialog h2 {font-size:20px;line-height:1.3;font-weight:600;margin:0;}
+    .zpa-dialog button {font:inherit;cursor:pointer;border:0;}
+    .zpa-dialog .zpa-close {flex:none;display:grid;place-items:center;width:28px;height:28px;padding:0;color:var(--color-foreground-subtle,var(--zpa-muted));background:transparent;font-size:24px;line-height:1;}
+    .zpa-close:hover {color:inherit;}
+    .zpa-name-field {display:flex;align-items:stretch;min-width:0;height:40px;border:1px solid var(--color-border,var(--zpa-border));border-radius:12px;}
+    .zpa-name-field:focus-within {border-color:#448aff;box-shadow:0 0 0 1px #448aff;}
+    .zpa-name-icon {flex:none;display:grid;place-items:center;width:40px;border-right:1px solid var(--color-border,var(--zpa-border));}
+    .zpa-dialog input {flex:1;min-width:0;width:100%;padding:0 10px;border:0;outline:0;border-radius:0 12px 12px 0;font:inherit;color:inherit;background:transparent;}
+    .zpa-source {width:100%;margin:14px 0 0;}
+    .zpa-source h3 {font-size:14px;font-weight:500;margin:0 0 8px;}
+    .zpa-folder {display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--color-border,var(--zpa-border));border-radius:10px;}
+    .zpa-folder > svg {flex:none;color:var(--color-foreground-subtle,var(--zpa-muted));}
+    .zpa-folder-info {min-width:0;}
+    .zpa-folder-name {overflow-wrap:anywhere;}
+    .zpa-path {font-size:11px;color:var(--color-foreground-subtle,var(--zpa-muted));overflow-wrap:anywhere;user-select:text;}
+    .zpa-actions {display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-top:20px;}
+    .zpa-actions button {padding:6px 12px;border-radius:9px;background:transparent;color:var(--color-foreground-subtle,var(--zpa-muted));}
+    .zpa-actions button:hover {background:var(--color-surface-hover,#8882);}
+    .zpa-actions .zpa-reset {margin-right:auto;padding-left:0;font-size:12px;}
+    .zpa-actions .zpa-primary {min-width:62px;background:var(--zpa-save-bg);color:var(--zpa-save-fg);font-weight:600;}
+    .zpa-actions .zpa-primary:hover {opacity:.9;}
+    .zpa-error {color:#f87171;font-size:12px;margin:10px 0 0;}
+    .zpa-error:empty {display:none;}
+    .zpa-sr-only {position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+    @media(prefers-color-scheme:light){.zpa-dialog {--zpa-bg:#fff;--zpa-fg:#242424;--zpa-border:#0002;--zpa-muted:#777;--zpa-save-bg:#252525;--zpa-save-fg:#fff;}}
+    :is(.dark,.zai-dark) .zpa-dialog {--zpa-bg:#292929;--zpa-fg:#ededed;--zpa-border:#ffffff14;--zpa-muted:#999;--zpa-save-bg:#fff;--zpa-save-fg:#242424;}
+    :is(.light,.zai-light) .zpa-dialog {--zpa-bg:#fff;--zpa-fg:#242424;--zpa-border:#0002;--zpa-muted:#777;--zpa-save-bg:#252525;--zpa-save-fg:#fff;}
   `;
   document.head.append(style);
   const observer = new MutationObserver(mutations => {
