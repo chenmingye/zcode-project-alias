@@ -10,7 +10,7 @@ const source = await readFile(new URL('../plugins/zcode-project-alias/runtime/al
 before(async () => {
   const built = await build({ entryPoints: [new URL('./fixture.jsx', import.meta.url).pathname], bundle: true, write: false, format: 'iife' });
   bundle = built.outputFiles[0].text;
-  server = createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(`<style>body{font:14px system-ui;background:#202626;color:#eee;margin:32px}ul{list-style:none;padding:0;width:300px}li{margin-bottom:24px}li>[role=button]:first-child{display:flex;align-items:center;gap:8px;height:34px}li button{margin-left:auto;border:0;color:inherit;background:#ffffff12;border-radius:6px;padding:5px 9px}.fixture-menu{min-width:140px;background:#292929;border:1px solid #ffffff20;border-radius:10px;padding:5px;box-shadow:0 8px 24px #0005}.fixture-item{padding:8px 12px;outline:0;border-radius:5px}.fixture-item[data-highlighted]{background:#ffffff15}small{display:none}</style><div id="root"></div>`); });
+  server = createServer((req, res) => { res.setHeader('Content-Type', 'text/html'); res.end(`<style>*, ::before, ::after { margin: 0; padding: 0; border: 0 solid; box-sizing: border-box; }body{font:14px system-ui;background:#202626;color:#eee;margin:32px}ul{list-style:none;padding:0;width:300px}li{margin-bottom:24px}li>[role=button]:first-child{display:flex;align-items:center;gap:8px;height:34px}li button{margin-left:auto;border:0;color:inherit;background:#ffffff12;border-radius:6px;padding:5px 9px}.fixture-menu{min-width:140px;background:#292929;border:1px solid #ffffff20;border-radius:10px;padding:5px;box-shadow:0 8px 24px #0005}.fixture-item{padding:8px 12px;outline:0;border-radius:5px}.fixture-item[data-highlighted]{background:#ffffff15}small{display:none}</style><div id="root"></div>`); });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
   // 使用独立无头实例和临时 profile，绝不连接用户正在运行的浏览器。
@@ -162,6 +162,12 @@ test('编辑项目展示真实源文件夹，关闭不保存，原名保存无�
     await ready(page);
     await openEditor(page);
     const panel = page.getByRole('dialog', { name: '编辑项目', exact: true });
+    // 宿主全局重置（*{margin:0}）下仍需居中：曾因依赖 dialog 默认 auto 边距而贴左上角。
+    const placement = await page.evaluate(() => {
+      const r = document.querySelector('.zpa-dialog').getBoundingClientRect();
+      return { dx: Math.abs((innerWidth - r.width) / 2 - r.x), dy: Math.abs((innerHeight - r.height) / 2 - r.y) };
+    });
+    assert.ok(placement.dx < 2 && placement.dy < 2, `弹窗应居中：dx=${placement.dx} dy=${placement.dy}`);
     assert.equal(await panel.locator('.zpa-folder-name').textContent(), 'serverless');
     assert.equal(await panel.locator('.zpa-path').textContent(), '/a/serverless');
     assert.equal(await panel.getByLabel('项目昵称（留空恢复原名）').inputValue(), 'serverless');
@@ -181,6 +187,7 @@ test('编辑项目展示真实源文件夹，关闭不保存，原名保存无�
     await page.setViewportSize({ width: 360, height: 640 });
     const bounds = await panel.boundingBox();
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 360);
+    assert.ok(Math.abs(bounds.x - (360 - bounds.width) / 2) < 2, `窄窗口也应居中：x=${bounds.x} w=${bounds.width}`);
     await page.getByLabel('项目昵称（留空恢复原名）').fill('丢弃草稿');
     await page.keyboard.press('Escape');
     assert.equal(await panel.count(), 0);

@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   const GLOBAL = '__zcodeProjectAlias';
-  const VERSION = '0.4.0';
+  const VERSION = '0.5.0';
   const PREFIX = 'zcode.project-alias.v1:';
   const PIN_PREFIX = 'zcode.project-pin.v1:';
   window[GLOBAL]?.dispose();
@@ -387,7 +387,8 @@
     .zpa-menu-error:empty {display:none;}
     .zpa-menu-item[aria-disabled="true"] {opacity:.5;}
     .zpa-menu-item:focus,.zpa-menu-item:hover {background:var(--color-surface-hover,#8882);}
-    .zpa-dialog {--zpa-bg:#292929;--zpa-fg:#ededed;--zpa-border:#ffffff14;--zpa-muted:#999;--zpa-save-bg:#fff;--zpa-save-fg:#242424;box-sizing:border-box;width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto;padding:20px;border:1px solid var(--color-border,var(--zpa-border));border-radius:22px;color:var(--color-foreground,var(--zpa-fg));background:var(--color-card,var(--zpa-bg));font:14px/1.5 var(--font-sans,system-ui,sans-serif);box-shadow:0 20px 70px #0004;}
+    /* 宿主的全局重置（* 清零边距）会覆盖 dialog 默认的 margin:auto，只靠默认样式会贴左上角；显式声明居中。 */
+    .zpa-dialog {position:fixed;inset:0;margin:auto;--zpa-bg:#292929;--zpa-fg:#ededed;--zpa-border:#ffffff14;--zpa-muted:#999;--zpa-save-bg:#fff;--zpa-save-fg:#242424;box-sizing:border-box;width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 48px);overflow:auto;padding:20px;border:1px solid var(--color-border,var(--zpa-border));border-radius:22px;color:var(--color-foreground,var(--zpa-fg));background:var(--color-card,var(--zpa-bg));font:14px/1.5 var(--font-sans,system-ui,sans-serif);box-shadow:0 20px 70px #0004;}
     .zpa-dialog *, .zpa-dialog *::before, .zpa-dialog *::after {box-sizing:border-box;}
     .zpa-dialog::backdrop {background:#0004;}
     .zpa-header {display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px;}
