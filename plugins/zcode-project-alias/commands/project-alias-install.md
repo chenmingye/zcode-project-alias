@@ -1,11 +1,13 @@
 ---
-description: 安装独立项目管理插件，在更多菜单中置顶与编辑
+description: 安装保留官方签名的项目昵称伴随启动器
 ---
 
-先定位此命令所属的已安装插件目录，确认 scripts/install.py、runtime/alias.js、runtime/loader.cjs 与 runtime/name-suggestions.cjs 齐全；读取 README.md。执行该目录的 `python3 scripts/install.py doctor`，再执行 `python3 scripts/install.py install --no-prompt`。
+定位本插件已安装目录，读取 README.md，确认 runtime/companion.cjs、launch-signed.py、alias.js、name-suggestions.cjs 与 scripts/install.py 齐全。
 
-本插件有自己的加载器与启停配置，不依赖其他插件。首次需在 ZCode 退出时安装自己的 app.asar 启动入口、更新完整性并建立本机 ad-hoc 签名，再正常启动。AI 会话固定使用 `--no-prompt`：不会弹出重启确认，也不会退出或重启客户端。若当前有运行中的客户端，安装器只准备自己的文件，返回 prepared/退出码 2；请报告“文件已就绪，待你正常退出 ZCode 后重跑 install 完成入口安装”。用户在自己终端运行不带 --no-prompt 的 install 时会看到“立即重启 / 稍后”确认框，由用户自己决定；不要替用户触发重启，不要刷新、重载或终止任何会话，不得借用其他插件的脚本或加载入口来绕过。
+运行 `python3 scripts/install.py doctor`，确认 signature_verified 为 true；失败时停止，要求先恢复官方签名应用，禁止改包、重签名或绕过校验。
 
-已有独立加载器时自己的界面脚本支持热更新，不需要重启；加载器更新时 0.5.1+ 的加载器会在应用内弹出原生重启确认，由用户自己点击。确认项目“⋯ 更多”菜单有“置顶 / 编辑 / 移除”，点击编辑后才能修改名称，已置顶项目显示“取消置顶”。不要自动给真实业务项目取昵称或改变置顶状态。没有界面读取能力时明确报告待用户确认，不把磁盘状态当成界面验收。
+再运行 `python3 scripts/install.py install --no-prompt`。市场命令包管理版本，界面通过自己的 `~/Applications/ZCode 项目昵称.app` 启动器加载。启动器仍运行官方 ZCode，使用匿名管道，不开 TCP 调试端口，不借用其他插件。
 
-编辑弹窗还提供本地 SVN/Git 候选前缀的填入与复制。不要执行更新、拉取、提交或项目脚本，不把可选格式整理名称说成仓库原名。
+返回 prepared/退出码 2 时说明尚未激活。用户打开昵称启动器后可点击“重新打开”完成正常退出和启动；未获得用户明确授权前，不使用 --restart，不退出当前 AI 会话。只有明确授权后才可在独立终端执行 `install --restart --no-prompt`。
+
+确认真实菜单“置顶 / 编辑 / 移除”、编辑弹窗与仓库候选；不要擅自修改真实项目。单独记录 Computer Use 的真实调用结果，不以 doctor 或演示截图代替。不要运行 SVN 更新/提交、Git 拉取/提交或项目脚本。

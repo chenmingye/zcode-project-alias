@@ -1,46 +1,42 @@
-当前安装方案存在 Computer Use 签名兼容性问题。需要 Computer Use 的用户请停止安装；不要继续执行下方安装步骤。该方案会替换厂商签名，本机已出现 Computer Use 启动方签名校验拒绝。普通卸载不能恢复厂商签名，需使用可信的官方签名应用包恢复并实测。不得通过绕过签名校验解决。
-
-以下为原安装流程，仅供理解当前方案；不能将其视为已经解决上述兼容问题。
-
-请安装并验证已经实现的 ZCode 项目昵称独立插件，不重新开发。
+请安装并验证 ZCode 项目昵称独立扩展，不重新开发。此前长任务已结束，现在正式安装；无需再等待长任务。
 
 来源：https://github.com/chenmingye/zcode-project-alias
-使用版本：0.5.1 或更新的独立版本。先读取仓库 README.md 和插件清单核对版本，确认 runtime/name-suggestions.cjs 存在，不能使用旧的依赖版安装命令。以下终端命令均在本仓库本地克隆目录的根目录执行；没有副本时从上述来源克隆。已有副本若有本地改动先保护，不能 reset/clean 强行更新。
+使用 0.6.0 或更新的签名保留版本。先读 README.md 和插件清单，必须包含 runtime/companion.cjs、launch-signed.py、alias.js、name-suggestions.cjs 与 scripts/install.py。禁止使用会修改 app.asar、重签名的安装方案。
 
-目标：左侧项目“⋯ 更多”菜单提供“置顶 / 编辑 / 移除”，在“编辑项目”弹窗中改名。置顶后显示“取消置顶”，项目排在当前列表顶部。昵称和置顶状态按真实路径与远端身份保存，不改目录、仓库或会话归属。不能安装、读取、修改或借用其他插件来实现加载。
+目标：项目行悬停后点击第一个“⋯”，提供置顶 / 编辑 / 移除；编辑弹窗修改昵称并显示只读的本地 SVN/Git 候选，支持填入和复制。保留原按钮、真实路径、会话归属与其他项目数据。
 
-当前可能有正在运行的长任务，严禁退出、重启、刷新窗口、重载会话、切换正在执行的任务或终止任何客户端/Agent/后端进程。不要修改业务代码、提交代码或更新依赖。此方案不承诺首次免重启：首次独立加载器只能在下次正常启动时载入。
+优先核对本机副本 /Users/Admin/Desktop/ai_project/Plugin_Workshop/zcode-project-alias；无副本则从上述仓库克隆。保护本地修改，不 reset/clean。以下命令均在实际仓库根目录执行，使用其他安装目录时先定位，不猜路径。
 
-一、先执行：
+一、运行：
 python3 plugins/zcode-project-alias/scripts/install.py doctor
 
-doctor 是只读检查。核对应用版本、hook_installed/hook_matches、running_pids、live 和 live_verified；不把磁盘入口当成运行中的界面。失败时报告原始错误，不自行绕过 ASAR 校验、签名校验或修改 Electron fuses。
+核对应用版本、signature_verified、responsibility_verified、running_pids、live、live_verified、restart_required。目标为 macOS 官方 ZCode 3.15.3 / 3.15.3.8237，其他版本按实际验证。厂商完整签名不通过时停止安装，先用可信官方应用恢复；不能重签名或绕过校验。保留用户数据。其他插件若自动改写应用，也需先处理该自动注入；不要直接删除它们。
 
-二、执行安装（AI 会话固定加 --no-prompt）：
-python3 plugins/zcode-project-alias/scripts/install.py install --no-prompt
-
-带 --no-prompt 时安装器绝不弹窗：若客户端在运行，只准备本插件 ~/.zcode/zcode-project-alias/ 内的文件并返回 state=prepared、退出码 2，尚未修改应用。记录此结果并告知用户：方便时正常退出 ZCode 后重跑同一条命令即可完成，然后正常启动；0.5.1 起，运行中的新版加载器检测到更新后会在应用内弹出原生重启确认，同样由用户自己点击。不要在会话中触发重启路径——用户在自己的终端运行不带 --no-prompt 的 install 时，安装器可能弹出“立即重启 / 稍后”确认框，确认后（或用户点击应用内确认后）会终止当前会话，AI 不要调用。不要强杀或调用任何其他重启方法。不要把 prepared 当成已生效。
-
-应用已退出时，install 会备份 app.asar、Info.plist、可执行文件与签名资源；只追加自己的 import、更新完整性并建立本机 ad-hoc 签名，替换厂商签名，保留原 entitlements/硬化运行时 flags；签名失败回滚。记录 backup 路径。该行为在 README 中有说明，不使用其他插件加载器，也不开放调试端口。安装器只在用户于确认框中同意后退出与重开应用，且只发送正常退出事件，不强杀进程。
-
-已有本插件独立加载器时，界面脚本更新可在运行中热加载，不需要重启；加载器本身变化须等下次启动，且运行中的 0.5.1+ 加载器会自己在应用内弹出原生重启确认，由用户决定。loader_restart_required 为 true 或候选区提示需要新版加载器时，不要冒称仓库识别已经生效。安装后重新 doctor，结合实际界面确认版本。
-
-三、需要市场命令入口时，在 ZCode 插件市场添加仓库并安装：
+二、从个人插件中管理命令包：
 /plugin marketplace add chenmingye/zcode-project-alias
 /plugin install zcode-project-alias@zcode-project-alias-marketplace
 
-仅市场安装不会自动注入界面。当前会话未发现新命令时直接运行 Python 即可，不重载会话。
+已有安装则按市场更新流程更新同一插件，不重复注册。市场命令包不等于界面已加载。
 
-四、在不影响长任务的前提下实际打开项目的“⋯ 更多”，确认有“置顶 / 编辑 / 移除”。不要自动给真实项目取昵称或改变置顶状态，不点击真实业务项目的“移除”。没有界面读取能力则明确写“界面待用户确认”。置顶、取消置顶、昵称保存、清除、跨窗口和重开恢复应由用户在方便时验证，未执行不能冒称通过。
+三、安装自己的伴随启动器：
+python3 plugins/zcode-project-alias/scripts/install.py install --no-prompt
 
-进入编辑项目后还应确认候选名称区：本地 SVN/Git 信息只读识别，候选标明来源；点击填入前缀，复制按钮复制同一前缀，不自动保存。不要执行 svn update/commit、git pull/fetch 或运行项目脚本来辅助识别，也不要连接远程工作区的服务。缺少命令时报告目录候选回退；远程工作区不在本机识别。不要把“格式整理”的名称说成仓库原始名称。
+这只写本插件运行目录与用户级启动器，不修改官方应用、不重签名、不开放网络调试端口。运行时需 Python、Node.js 和系统 codesign，不需要 npm install 开发依赖。
 
-五、回退使用：
+首次需通过 ~/Applications/ZCode 项目昵称.app 重新打开官方 ZCode，昵称启动器沿用原有账号、项目与会话数据。直接从原版图标启动不会自动加载昵称功能，以后请用昵称启动器，可拖到 Dock。
+
+若应用已直接打开，--no-prompt 返回 prepared/退出码 2，只表示准备完成；不能冒称生效。用户打开昵称启动器后会看到“稍后 / 重新打开”确认，由用户点击后正常退出并重开，绝不强杀进程。如果用户已明确授权你正常退出，可在独立终端运行：
+python3 plugins/zcode-project-alias/scripts/install.py install --restart --no-prompt
+
+你若运行在 ZCode 内部，退出会结束自己，应先完成准备，一次给我包含真实绝对路径的独立终端命令，不能反复重试或擅自退出。长任务已完成不等于每个新会话都自动授权退出；以当前用户授权为准。
+
+四、安装后重新 doctor，并在真实界面检查菜单、昵称保存与恢复、置顶取消、源文件夹、候选填入及复制。使用临时测试项目，不擅自修改真实业务项目，不点击真实项目“移除”。SVN/Git 仅本地只读，不更新、拉取、提交或运行业务脚本。
+
+单独验证 Computer Use 的实际调用，例如只获取桌面状态，不修改文件或设置。应用签名通过、live_verified 或夹具截图都不能代替这一验收。没有工具或界面通道时明确写待验证，不能宣称全部通过。
+
+五、停用及移除自己的启动器：
 python3 plugins/zcode-project-alias/scripts/install.py uninstall
 
-它只停用本插件配置，自己的加载器约 2 秒内撤销界面；昵称保留。若要完整移除自己的入口，在应用完全退出后执行：
-python3 plugins/zcode-project-alias/scripts/install.py uninstall --remove-hook
+不退出客户端、不修改官方应用、不删除昵称数据。市场命令包可在个人插件中另外卸载。
 
-不要整体覆盖旧备份，不删除应用数据或操作其他插件。市场禁用命令包不会自动停用客户端补丁。
-
-交付报告必须写明：版本、命令和退出码、state、入口状态、实际 live 状态、备份路径、真实菜单观察与未验证项。若 prepared，明确只完成准备，等待用户方便时退出后完成入口安装；不声称热加载成功。
+交付用中文报告实际版本、安装目录、应用版本、执行命令与退出码、signature_verified、state、live_verified、restart_required、真实界面观察及 Computer Use 调用结果。真实未验证项必须说明。如果这是新对话，先核对本机状态再接手，不假定已经安装成功。

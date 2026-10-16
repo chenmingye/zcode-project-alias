@@ -16,12 +16,13 @@ assert entry['name'] == manifest['name'] == 'zcode-project-alias'
 assert entry['version'] == manifest['version']
 assert (root / entry['source']).resolve() == plugin
 assert list((plugin / 'commands').glob('*.md'))
-for name in ['alias.js', 'loader.cjs', 'name-suggestions.cjs']:
+for name in ['alias.js', 'companion.cjs', 'name-suggestions.cjs']:
     subprocess.run(['node', '--check', str(plugin / 'runtime' / name)], check=True)
 output = root / 'dist'
 output.mkdir(exist_ok=True)
 archive = output / f'zcode-project-alias-{manifest["version"]}.zip'
 paths = [root / 'marketplace.json', root / 'README.md', root / 'INSTALL-ZCODE-AI.md']
+paths += sorted((root / 'docs/images').glob('*.png'))
 paths += sorted(path for path in plugin.rglob('*') if path.is_file() and '__pycache__' not in path.parts)
 with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as stream:
     for path in paths:

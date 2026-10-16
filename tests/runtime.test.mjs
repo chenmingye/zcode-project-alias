@@ -287,13 +287,13 @@ test('仓库名称候选可填前缀和复制，识别结果不覆盖草稿，�
   } finally { await context.close(); }
 });
 
-test('候选结果按当前弹窗隔离，远端与旧加载器不请求本机仓库', async () => {
+test('候选结果按当前弹窗隔离，远端与未连接伴随加载器时不请求本机仓库', async () => {
   const context = await browser.newContext();
   const page = await context.newPage();
   try {
     await ready(page);
     await openEditor(page);
-    assert.match(await page.locator('.zpa-suggestions-note').textContent(), /新版独立加载器/);
+    assert.match(await page.locator('.zpa-suggestions-note').textContent(), /伴随加载器/);
     assert.equal((await page.evaluate(() => window.__zcodeProjectAlias.takeNameRequests())).requests.length, 0);
     await page.getByRole('button', { name: '取消', exact: true }).click();
     await page.evaluate(() => { window.__zcodeProjectAliasNamesAvailable = true; });

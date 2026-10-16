@@ -1,13 +1,10 @@
 # ZCode 项目昵称
 
-> **Computer Use 兼容性问题：需要操纵电脑功能的用户请勿安装当前补丁方案。**
-> 本方案修改应用并以 ad-hoc 签名替换厂商签名。本机安装后 Computer Use 无法启动，报告启动方不满足厂商代码签名要求；屏幕录制和辅助功能授权不能解决这一签名问题。
-> 普通卸载、移除 hook 或再次 ad-hoc 签名不会恢复厂商签名。恢复应使用可信的官方签名应用包，保留用户数据，并在恢复后实测 Computer Use。安装备份只有通过完整厂商签名校验才可用于恢复，不能仅凭备份存在就判定可用。
-> 当前未提供既保留本补丁又保持 Computer Use 可用的已验证方案；下方截图仅展示昵称功能，不代表客户端其他能力兼容。
+> `0.6.0` 使用外部伴随加载器与匿名调试管道：不修改 ZCode 应用包、不重签名、不开放网络调试端口。安装器会先验证官方完整签名。本机已同时验证昵称功能与 ZCode 自身的 Computer Use：真实应用列表、Finder 可访问性状态和 ZCode 主窗口截图均成功返回。验证目标为 macOS ZCode 3.15.3 / 3.15.3.8237，其他版本需重新验证。
 
 **独立插件，无其他插件依赖。** 左侧项目的“⋯ 更多”菜单提供“置顶 / 编辑 / 移除”，在“编辑项目”弹窗中修改名称。不改真实目录、仓库名称或会话归属。
 
-版本 `0.5.1`。作者：Jason.chen。目前适配 macOS ZCode Desktop 3.15.3 的项目列表结构，其他客户端版本需重新验证。
+版本 `0.6.0`。作者：Jason.chen。目前适配 macOS ZCode Desktop 3.15.3 的项目列表结构，其他客户端版本需重新验证。
 
 ## 功能效果图
 
@@ -91,28 +88,11 @@ Git 项目可提供 origin 仓库名、当前分支和上级目录候选，每�
 
 只执行本地 `svn info`、`git rev-parse`、`git config --get` 和 `git symbolic-ref`，不连接业务仓库服务器，不拉取、更新、提交或运行项目脚本。命令有超时和输出上限，识别结果短暂缓存 60 秒。不会把 remote URL 中的账号密码带到候选或错误信息中。远程工作区暂不在本机读取仓库信息，仍可手动改名。
 
-## 安装
+## 安装与启动
 
-需要 macOS、Python 3.9+、Node.js 和系统 `codesign`。没有其他插件也能安装、运行和卸载。运行时不需要 npm 安装依赖；仓库的 npm 依赖仅用于开发测试。
+需要 macOS、Python 3.9+、Node.js，以及官方完整签名的 ZCode Desktop。当前验证目标为 `3.15.3 / 3.15.3.8237`。运行时不需要 npm 安装依赖。
 
-将本仓库克隆到本地后，在仓库根目录执行：
-
-```bash
-python3 plugins/zcode-project-alias/scripts/install.py doctor
-python3 plugins/zcode-project-alias/scripts/install.py install
-```
-
-**首次加载独立入口或更新加载器需要重启 ZCode。** 运行中的处理分两种情况：
-
-- 加载器更新、且运行中的加载器已是 0.5.1 或更新：由运行中的应用自己弹出原生“稍后 / 立即重启”确认，确认后自动重启；安装器不再重复弹窗。
-- 首次安装入口、或运行中的加载器更早：安装器先准备本插件自己的文件，再弹出带应用图标的系统确认框。“立即重启”只发送正常退出事件（不强杀进程），等待退出后完成入口安装，并自动重新打开 ZCode；点“稍后”或没有图形界面则返回 `state: prepared` 和退出码 `2`，不修改运行中的应用，之后正常退出并重跑 `install` 即可完成。不能把 `prepared` 当成已经加载。
-- 脚本和自动化场景加 `--no-prompt`：安装器不弹确认框，只准备文件。
-
-独立加载器已启动时，界面脚本更新热加载、不需要重启；加载器本身变化才需要重启。安装器不会刷新窗口、切换任务或发送消息，也不会未经确认退出应用。
-
-0.5.1 起，加载器更新优先在应用内确认，系统确认框也换成了带应用图标的样式；0.5.0 修复了“编辑项目”弹窗在宿主全局样式重置下贴左上角的问题，只改动了界面脚本，热更新即生效。
-
-### 插件市场
+先在插件市场添加本仓库，在“个人插件”中安装 `zcode-project-alias`：
 
 ```text
 /plugin marketplace add chenmingye/zcode-project-alias
@@ -120,39 +100,44 @@ python3 plugins/zcode-project-alias/scripts/install.py install
 /project-alias-install
 ```
 
-市场提供安装/卸载命令。当前会话未发现新命令时可直接运行上面的 Python 命令，不必重载会话。仅安装市场命令包不会自动修改客户端，也不会自动重启。
+市场管理插件版本与命令，实际界面由自己的伴随启动器加载。也可以在本仓库根目录执行：
 
-## 独立加载方式与文件范围
+```bash
+python3 plugins/zcode-project-alias/scripts/install.py doctor
+python3 plugins/zcode-project-alias/scripts/install.py install
+```
 
-官方 UI Plugin 提供自己的交互面板，已查阅接口没有宿主项目菜单的扩展点，因此本插件使用独立的本地客户端补丁：
+安装会创建 `~/Applications/ZCode 项目昵称.app`。**之后请从这个启动器打开 ZCode**，可将它拖入 Dock。它启动的仍是 `/Applications/ZCode.app` 中的官方签名程序，沿用原来的账号、项目与会话数据。直接点击原版 ZCode 图标打开时不会自动附带昵称加载器；再打开昵称启动器即可按提示重新打开。
 
-- 自己的运行目录：`~/.zcode/zcode-project-alias/`，包含 `loader.cjs`、`alias.js`、`name-suggestions.cjs`、启停配置、状态文件与备份。
-- 自己的启动标记：只在 ZCode `app.asar` 的主进程入口追加本加载器的 import，保留原入口其他内容。
-- 更新受影响入口与 ASAR 头的 SHA256，并同步 `Info.plist` 完整性记录。应用资源变化后在本机重新建立 ad-hoc 签名，保留现有 entitlements 和硬化运行时 flags；这会替换厂商签名，不代表厂商签名仍然有效。
-- 首次修改前备份 ASAR、Info.plist、可执行文件与签名资源；签名失败则回滚本次事务。不关闭 ASAR 校验，不修改 Electron fuses，不移除系统隔离属性，不开启调试端口。
-- 不读取或修改任何其他插件的脚本、设置、加载器。自己的加载器只注入 ZCode 主界面，不注入外部网页、webview 或其他本地页面。
+如果 ZCode 已直接打开，启动器会弹出“稍后 / 重新打开”确认。点击“重新打开”才正常退出并重新打开，不强制结束进程；未确认时返回 `state: prepared`、退出码 `2`，表示尚未激活。AI 会话使用 `install --no-prompt` 只准备文件，避免结束自己的执行环境；用户明确同意正常退出后，可在独立终端执行 `install --restart --no-prompt`。
 
-这是非官方客户端扩展。ZCode 自身升级可能覆盖启动入口；升级后先运行 doctor，必要时重新安装。项目行结构不兼容时会跳过，不按同名文字猜测项目、不写宿主业务状态。不要把本机修改后的应用包分享给其他人。
+本机旧补丁造成的厂商签名损坏必须先用官方签名应用包恢复。新安装器会拒绝不满足完整厂商签名的应用，不使用旧备份覆盖，不重签名，不调整签名校验。其他扩展如果继续自动修改应用，同样会破坏这一前提，需要先停用其应用注入。
+
+## 加载方式与文件范围
+
+- 自己的运行目录：`~/.zcode/zcode-project-alias/`。包含 `companion.cjs`、`launch-signed.py`、`alias.js`、`name-suggestions.cjs`、配置、状态与日志；启动器保存在用户的 `~/Applications/` 中。
+- 外部 Node 伴随进程以 `--remote-debugging-pipe` 启动原厂 ZCode，通过父子进程继承的匿名管道调用 Chromium CDP。不会开启 TCP 调试端口、Node inspector，或修改 Electron fuses。
+- 启动时通过 macOS 的进程责任归属接口，让官方 ZCode 独立承担自身身份，避免继承外部 Node 的身份；接口不可用时停止，不绕过 CUA 的连接方签名检查。无需额外编译工具。
+- 只向官方应用资源目录里的主窗口注入自己的界面，不向网页、webview 或其他插件页面注入。
+- 本机控制 socket 权限为 `0600`，仅提供状态与刷新，不提供任意 JavaScript、CDP 或文件命令执行接口。
+- 界面脚本可热更新；伴随进程与仓库识别服务的代码变化需要从昵称启动器重新打开。原版应用的自重启或升级不会自动继承父进程管道，之后请通过昵称启动器打开。
+- 应用关闭后伴随进程结束，不擅自把应用再次拉起。关闭加载器的终端或强杀伴随进程可能使调试管道断开，请通过启动器运行，由它管理进程生命周期。
+
+这是非官方扩展，使用 Chromium 调试能力访问宿主主界面，没有官方项目菜单扩展 API 的兼容保证。ZCode 更新后请重新检查界面结构、厂商签名与 Computer Use。无须关闭任何签名或权限校验。
 
 ## 检查与卸载
 
-`doctor` 只读检查应用、自己的入口与状态。`hook_matches` 表示磁盘入口就绪；`live_verified` 只有匹配当前进程的近期加载器状态确认界面版本后才为 true。最终仍应实际打开项目菜单确认“置顶 / 编辑 / 移除”。
+```bash
+python3 plugins/zcode-project-alias/scripts/install.py doctor
+```
 
-运行中停用界面：
+`signature_verified` 表示官方完整签名与厂商身份通过校验；`responsibility_verified` 表示运行中的 ZCode 承担自身责任身份；`live_verified` 表示当前客户端进程已连通伴随加载器并加载匹配的界面版本，不等于所有功能实测通过。`restart_required` 表示需经昵称启动器重新打开。状态不会把过期文件或其他进程视作当前加载结果。
 
 ```bash
 python3 plugins/zcode-project-alias/scripts/install.py uninstall
 ```
 
-独立加载器会在约 2 秒内撤销自己的菜单项、恢复原名称和宿主顺序，保留已保存昵称与置顶状态。这个操作不退出 ZCode；自己的启动标记保留为停用状态。市场里禁用命令包不会自动撤销客户端补丁，应先执行本卸载命令。
-
-要完全移除自己的启动入口，在 ZCode 完全退出后执行：
-
-```bash
-python3 plugins/zcode-project-alias/scripts/install.py uninstall --remove-hook
-```
-
-只移除本插件标记，不拿旧备份整体覆盖后来更新的应用。运行目录和备份仍保留，避免误删昵称和恢复证据。
+卸载停用自己的界面、恢复原名称与列表顺序，并移除自己的启动器；不修改原厂应用，不关闭当前会话，已保存昵称与置顶数据保留。市场命令包可以另外在“个人插件”中卸载。
 
 ## 开发与验证
 
@@ -160,16 +145,15 @@ python3 plugins/zcode-project-alias/scripts/install.py uninstall --remove-hook
 npm ci --no-audit --no-fund
 npm run check
 npm test
+npm run test:native
 python3 scripts/package.py
 ```
 
-浏览器测试使用独立无头 Google Chrome，默认路径 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`，可用 `CHROME_PATH` 指定。测试不会连接用户浏览器，不修改本机 ZCode。
+测试覆盖匿名管道消息分帧与 UTF-8、请求匹配、超时与断开错误、目标页面白名单、安装器不修改应用、签名失败停止、运行中准备状态，以及昵称、置顶、菜单、编辑、存储失败、多窗口、恢复和 SVN/Git 本地识别。
 
-测试使用真实 React、Radix portal 菜单，覆盖置顶与取消置顶、编辑改名、原移除操作、键盘、同名项目隔离、远端身份、宿主重排、跨窗口、新文档恢复、取消、存储失败和卸载。独立加载器测试覆盖无其他插件时注入、热更新、停用及页面隔离。安装器在临时应用中验证入口、ASAR 完整性、运行中保护、失败回滚，并在 macOS 上验证临时应用的实际签名。
+`test:native` 在官方签名应用的独立配置中验证真实主窗口加载、停用、重新启用，以及应用资源逐字节不变；不读取用户账号或业务配置。它不代替 Computer Use 实际调用。
 
-真实 ZCode 3.15.3 下的入口安装、启动加载与“编辑项目”弹窗已在本机验收（doctor 的 `live_verified` 通过，并修复了弹窗在宿主全局重置下贴左上角的问题）；真实远端连接仍待用户在方便时验收。
-
-README 截图可在安装开发依赖后运行 `node scripts/capture-screenshots.mjs` 重新生成，输出到 `docs/images/`。脚本仅启动本次独立浏览器和临时本地页面，结束后关闭，不操作真实客户端。
+浏览器测试使用独立无头 Google Chrome，不连接用户浏览器，默认 `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`，可用 `CHROME_PATH` 指定。截图脚本 `node scripts/capture-screenshots.mjs` 输出到 `docs/images/`，是隔离测试演示；不能冒充真实客户端验收。
 
 ## 资料
 

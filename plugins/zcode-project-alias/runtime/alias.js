@@ -1,13 +1,13 @@
 /**
  * ZCode 项目昵称界面。作者：Jason.chen
- * 由本插件自己的 loader.cjs 独立加载；安装器不读取其他插件。
+ * 由本插件自己的 companion.cjs 通过匿名管道加载；安装器不读取其他插件。
  * 只读 React 节点取得项目身份与宿主顺序，在原列表内调整置顶显示、名称和本扩展界面，
  * 不写宿主 store、不调用会话接口。React 私有结构不兼容时跳过该项目。
  */
 (() => {
   'use strict';
   const GLOBAL = '__zcodeProjectAlias';
-  const VERSION = '0.5.1';
+  const VERSION = '0.6.0';
   const PREFIX = 'zcode.project-alias.v1:';
   const PIN_PREFIX = 'zcode.project-pin.v1:';
   window[GLOBAL]?.dispose();
@@ -205,7 +205,7 @@
       return;
     }
     if (!window.__zcodeProjectAliasNamesAvailable) {
-      note.textContent = '仓库候选需要新版独立加载器；更新后在方便时正常启动 ZCode，当前仍可手动编辑';
+      note.textContent = '仓库候选需要伴随加载器；请从“ZCode 项目昵称”启动器打开，当前仍可手动编辑';
       return;
     }
     note.textContent = '正在只读识别本地 SVN / Git 项目名称…';
