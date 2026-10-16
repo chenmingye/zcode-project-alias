@@ -18,7 +18,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 BEGIN = b'\n/* BEGIN ZCODE PROJECT ALIAS BOOT v2 */\n'
 END = b'\n/* END ZCODE PROJECT ALIAS BOOT v2 */\n'
-VERSION = '0.4.0'
+VERSION = '0.5.0'
 
 
 def digest(data):
@@ -225,6 +225,40 @@ def resign(app):
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True, capture_output=True)
 
 
+def ask_restart():
+    """应用运行时询问是否立即重启完成安装；无图形界面、超时或选择稍后都返回 False。"""
+    dialog = ('display dialog "项目昵称插件已准备完成，需要重启 ZCode 才能生效。"\n'
+              'with title "项目昵称插件"\n'
+              'buttons {"稍后", "立即重启"}\n'
+              'default button "立即重启"\n'
+              'giving up after 60')
+    try:
+        result = subprocess.run(['osascript', '-e', dialog], capture_output=True, text=True, timeout=90)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return result.returncode == 0 and 'button returned:立即重启' in result.stdout
+
+
+def quit_app(app, executable):
+    """发送正常退出事件并等待进程结束；超时返回 False。绝不强制终止任何进程。"""
+    identifier = plistlib.loads((app / 'Contents/Info.plist').read_bytes()).get('CFBundleIdentifier')
+    try:
+        subprocess.run(['osascript', '-e', f'tell application id "{identifier}" to quit'],
+                       capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    deadline = time.time() + 60
+    while time.time() < deadline:
+        if not app_running(executable):
+            return True
+        time.sleep(1)
+    return False
+
+
+def launch_app(app):
+    subprocess.run(['open', str(app)], check=False)
+
+
 def apply_hook(app, data_dir, asar, remove=False):
     info, metadata, executable, archive = app_paths(app)
     entry = hook_entry(asar.entry, data_dir, remove)
@@ -276,13 +310,14 @@ def apply_hook(app, data_dir, asar, remove=False):
     return str(backup)
 
 
-def run(action, app, data_dir, remove_hook=False):
+def run(action, app, data_dir, remove_hook=False, no_prompt=False):
     if action == 'doctor':
         return inspect(app, data_dir)[1]
     data_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
     with (data_dir / 'install.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         asar, result = inspect(app, data_dir)
+        info, metadata, executable, archive = app_paths(app)
         if action == 'doctor':
             return result
         if action == 'uninstall':
@@ -294,17 +329,33 @@ def run(action, app, data_dir, remove_hook=False):
                 result['hook_installed'] = False
                 result['hook_matches'] = False
             return result
-        # 已有独立入口时只更新自己的文件；首次安装遇到长任务则只准备文件。
+        # 已有独立入口时只更新自己的文件；首次安装或加载器更新遇到运行中的客户端时，
+        # 先准备文件再询问是否立即重启（--no-prompt 或用户选择稍后时保持只准备）。
         prepare_runtime(data_dir)
         result = inspect(app, data_dir)[1]
-        if not result['hook_matches']:
-            if result['running_pids']:
-                result.update(state='prepared', restart_required=True,
-                              note='文件已准备，未修改运行中的 ZCode。待长任务结束自行退出后，再执行 install 并正常启动。')
+        if result['running_pids'] and (not result['hook_matches'] or result['loader_restart_required']):
+            if not no_prompt and ask_restart() and quit_app(app, executable):
+                try:
+                    asar, result = inspect(app, data_dir)
+                    if not result['hook_matches']:
+                        backup = apply_hook(app, data_dir, asar)
+                        result = inspect(app, data_dir)[1]
+                        result['backup'] = backup
+                finally:
+                    # 无论安装是否完成都恢复用户的应用；安装失败时应用资源已按备份回滚。
+                    launch_app(app)
+                result.update(state='installed', hook_installed=True, hook_matches=True, restart_completed=True,
+                              note='已按确认正常重启 ZCode 并完成入口安装；界面随启动加载。')
                 return result
+            result.update(state='prepared', restart_required=True,
+                          note='文件已准备，未修改运行中的 ZCode；退出后重跑 install 即可完成。')
+            return result
+        if not result['hook_matches']:
             result['backup'] = apply_hook(app, data_dir, asar)
-        result.update(state='installed', hook_installed=True, hook_matches=True,
-                      note='使用自己的启动入口；首次需正常启动 ZCode，已有独立加载器时界面热更新。')
+        note = ('使用自己的启动入口；首次需正常启动 ZCode，已有独立加载器时界面热更新。'
+                if not result['loader_restart_required'] else
+                '界面脚本可热更新；加载器或仓库服务已更新，下次正常启动 ZCode 生效。')
+        result.update(state='installed', hook_installed=True, hook_matches=True, note=note)
         return result
 
 
@@ -314,9 +365,11 @@ def main():
     parser.add_argument('--app', type=Path, default=Path('/Applications/ZCode.app'))
     parser.add_argument('--data-dir', type=Path, default=Path.home() / '.zcode/zcode-project-alias')
     parser.add_argument('--remove-hook', action='store_true', help='卸载时同时移除应用入口；要求应用已退出')
+    parser.add_argument('--no-prompt', action='store_true', help='应用运行时只准备文件，不弹出重启确认；脚本或自动化使用')
     args = parser.parse_args()
     try:
-        result = run(args.action, args.app.expanduser().resolve(), args.data_dir.expanduser().resolve(), args.remove_hook)
+        result = run(args.action, args.app.expanduser().resolve(), args.data_dir.expanduser().resolve(),
+                     args.remove_hook, args.no_prompt)
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 2 if result['state'] == 'prepared' else 0
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as cause:

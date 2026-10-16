@@ -7,6 +7,7 @@ import plistlib
 import struct
 import subprocess
 import tempfile
+import time
 import unittest
 import shutil
 import sys
@@ -86,7 +87,8 @@ class InstallTests(unittest.TestCase):
 
     def test_running_first_install_only_prepares_own_files(self):
         old = self.archive.read_bytes(), self.info.read_bytes(), self.exe.read_bytes()
-        with patch.object(installer, 'app_running', return_value=[123]):
+        with patch.object(installer, 'app_running', return_value=[123]), \
+                patch.object(installer, 'ask_restart', return_value=False):
             result = installer.run('install', self.app, self.data)
         self.assertEqual(result['state'], 'prepared')
         self.assertTrue(result['restart_required'])
@@ -94,6 +96,78 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(old, (self.archive.read_bytes(), self.info.read_bytes(), self.exe.read_bytes()))
         self.sign.assert_not_called()
         self.assertTrue((self.data / 'loader.cjs').exists())
+
+    def test_confirm_restart_quits_installs_and_relaunches(self):
+        running = [123]
+        launched = []
+        with patch.object(installer, 'app_running', side_effect=lambda executable: list(running)), \
+                patch.object(installer, 'ask_restart', return_value=True), \
+                patch.object(installer, 'quit_app', side_effect=lambda app, executable: running.clear() or True), \
+                patch.object(installer, 'launch_app', side_effect=lambda app: launched.append(str(app))):
+            result = installer.run('install', self.app, self.data)
+        self.assertEqual(result['state'], 'installed')
+        self.assertTrue(result['hook_matches'])
+        self.assertTrue(result['restart_completed'])
+        self.assertTrue((Path(result['backup']) / 'app.asar').exists())
+        self.assertEqual(launched, [str(self.app)])
+        self.sign.assert_called_once_with(self.app)
+
+    def test_declined_restart_only_prepares(self):
+        old = self.archive.read_bytes()
+        with patch.object(installer, 'app_running', return_value=[123]), \
+                patch.object(installer, 'ask_restart', return_value=False):
+            result = installer.run('install', self.app, self.data)
+        self.assertEqual(result['state'], 'prepared')
+        self.assertTrue(result['restart_required'])
+        self.assertEqual(self.archive.read_bytes(), old)
+        self.sign.assert_not_called()
+
+    def test_no_prompt_flag_skips_dialog_and_prepares(self):
+        with patch.object(installer, 'app_running', return_value=[123]), \
+                patch.object(installer, 'ask_restart') as ask:
+            result = installer.run('install', self.app, self.data, no_prompt=True)
+        self.assertEqual(result['state'], 'prepared')
+        self.assertFalse(result['hook_installed'])
+        ask.assert_not_called()
+
+    def test_quit_timeout_falls_back_to_prepared(self):
+        old = self.archive.read_bytes()
+        with patch.object(installer, 'app_running', return_value=[123]), \
+                patch.object(installer, 'ask_restart', return_value=True), \
+                patch.object(installer, 'quit_app', return_value=False):
+            result = installer.run('install', self.app, self.data)
+        self.assertEqual(result['state'], 'prepared')
+        self.assertEqual(self.archive.read_bytes(), old)
+
+    def test_loader_update_prompts_restart_without_rewriting_archive(self):
+        installer.run('install', self.app, self.data)
+        hooked = self.archive.read_bytes()
+        status = self.data / 'status/123.json'
+        status.parent.mkdir(parents=True, exist_ok=True)
+        status.write_text(json.dumps({'pid': 123, 'updatedAt': time.time() * 1000,
+                                      'loaderHash': 'stale-loader-hash', 'serviceHash': 'stale-service-hash'}))
+        launched = []
+        with patch.object(installer, 'app_running', return_value=[123]), \
+                patch.object(installer, 'ask_restart', return_value=True), \
+                patch.object(installer, 'quit_app', return_value=True), \
+                patch.object(installer, 'launch_app', side_effect=lambda app: launched.append(str(app))):
+            result = installer.run('install', self.app, self.data)
+        self.assertEqual(result['state'], 'installed')
+        self.assertTrue(result['restart_completed'])
+        self.assertEqual(self.archive.read_bytes(), hooked)
+        self.assertEqual(launched, [str(self.app)])
+        self.assertEqual(self.sign.call_count, 1)
+
+    def test_up_to_date_running_install_does_not_prompt(self):
+        installer.run('install', self.app, self.data)
+        hooked = self.archive.read_bytes()
+        with patch.object(installer, 'app_running', return_value=[123]), \
+                patch.object(installer, 'ask_restart') as ask:
+            result = installer.run('install', self.app, self.data)
+        self.assertEqual(result['state'], 'installed')
+        self.assertNotIn('restart_completed', result)
+        self.assertEqual(self.archive.read_bytes(), hooked)
+        ask.assert_not_called()
 
     def test_renamed_electron_process_is_still_treated_as_running(self):
         self.running.stop()
