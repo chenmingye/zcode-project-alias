@@ -7,7 +7,7 @@
 (() => {
   'use strict';
   const GLOBAL = '__zcodeProjectAlias';
-  const VERSION = '0.5.0';
+  const VERSION = '0.5.1';
   const PREFIX = 'zcode.project-alias.v1:';
   const PIN_PREFIX = 'zcode.project-pin.v1:';
   window[GLOBAL]?.dispose();

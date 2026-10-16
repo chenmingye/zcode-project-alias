@@ -4,20 +4,23 @@
  * 只向本应用的主界面注入，自己的 enabled.json 控制启停，alias.js 支持热更新。
  */
 'use strict';
-const { app, webContents } = require('electron');
+const { app, dialog, webContents } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const vm = require('node:vm');
 const { suggest } = require('./name-suggestions.cjs');
 const { fileURLToPath } = require('node:url');
-const VERSION = '0.4.0';
+const VERSION = '0.5.1';
 const ROOT = __dirname;
 const UI = path.join(ROOT, 'alias.js');
 const CONFIG = path.join(ROOT, 'enabled.json');
 const STATUS = path.join(ROOT, 'status', `${process.pid}.json`);
 const HASH = crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex');
-const SERVICE_HASH = crypto.createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'name-suggestions.cjs'))).digest('hex');
+const SERVICE_FILE = path.join(ROOT, 'name-suggestions.cjs');
+const SERVICE_HASH = crypto.createHash('sha256').update(fs.readFileSync(SERVICE_FILE)).digest('hex');
+// 磁盘文件可能在安装器中被原子替换，逐次重新读取比对已加载版本。
+const fileHash = file => { try { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); } catch { return null; } };
 if (!globalThis.__zcodeProjectAliasLoader) {
   const states = new Map();
   const attached = new WeakSet();
@@ -25,6 +28,7 @@ if (!globalThis.__zcodeProjectAliasLoader) {
   let polling = false;
   let generation = 0;
   let lastError = null;
+  let promptShown = false;
   const trusted = wc => {
     try {
       if (wc.isDestroyed() || wc.getType() !== 'window') return false;
@@ -45,6 +49,22 @@ if (!globalThis.__zcodeProjectAliasLoader) {
       fs.writeFileSync(temp, value, { mode: 0o600 }); fs.renameSync(temp, STATUS);
     } catch (error) { console.error('[project-alias] status:', error.message); }
   };
+  // 加载器或仓库服务被安装器更新后，由运行中的应用自己弹原生确认：点“立即重启”才重启。
+  // 每次会话只提示一次；选择“稍后”或未响应时保持现状，下次正常启动本就会载入新版本。
+  const promptRestart = async () => {
+    if (promptShown || stopped) return;
+    promptShown = true;
+    let choice = 0;
+    try {
+      const answer = await dialog.showMessageBox({
+        type: 'info', title: '项目昵称插件', message: '项目昵称插件已更新',
+        detail: '需要重启 ZCode 才能完全生效。', buttons: ['稍后', '立即重启'],
+        defaultId: 1, cancelId: 0, noLink: true,
+      });
+      choice = answer.response;
+    } catch (error) { lastError = `重启确认失败：${error.message}`; report(); return; }
+    if (choice === 1) { app.relaunch(); app.quit(); }
+  };
   const poll = async () => {
     if (stopped || polling) return;
     polling = true;
@@ -56,6 +76,9 @@ if (!globalThis.__zcodeProjectAliasLoader) {
       try { config = JSON.parse(fs.readFileSync(CONFIG, 'utf8')); }
       catch (error) { configError = error.message; }
       const enabled = config?.enabled === true;
+      if (enabled && !promptShown && (fileHash(__filename) !== HASH || fileHash(SERVICE_FILE) !== SERVICE_HASH)) {
+        void promptRestart();
+      }
       const source = enabled ? fs.readFileSync(UI, 'utf8') : '';
       if (enabled) new vm.Script(source, { filename: UI });
       const sourceHash = crypto.createHash('sha256').update(source).digest('hex');

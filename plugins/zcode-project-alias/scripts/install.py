@@ -18,7 +18,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 BEGIN = b'\n/* BEGIN ZCODE PROJECT ALIAS BOOT v2 */\n'
 END = b'\n/* END ZCODE PROJECT ALIAS BOOT v2 */\n'
-VERSION = '0.5.0'
+VERSION = '0.5.1'
 
 
 def digest(data):
@@ -225,19 +225,33 @@ def resign(app):
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True, capture_output=True)
 
 
-RESTART_DIALOG = ('display dialog "项目昵称插件已准备完成，需要重启 ZCode 才能生效。" '
-                  'with title "项目昵称插件" buttons {"稍后", "立即重启"} '
-                  'default button "立即重启" giving up after 60')
+def restart_dialog(app=None):
+    """单行 AppleScript 重启确认；跨行写法会被 osascript 拒绝。图标用应用自己的 icns，缺失时省略。"""
+    icon = ''
+    if app is not None:
+        icon_file = Path(app) / 'Contents/Resources/icon.icns'
+        if icon_file.exists() and '"' not in str(icon_file):
+            icon = f' with icon file (POSIX file "{icon_file}")'
+    return ('display dialog "项目昵称插件已准备完成，需要重启 ZCode 才能生效。" '
+            f'with title "项目昵称插件"{icon} '
+            'buttons {"稍后", "立即重启"} default button "立即重启" giving up after 60')
 
 
-def ask_restart():
+def supports_in_app_prompt(version):
+    """0.5.1 起加载器能在应用内弹出原生重启确认；更早的版本只能由安装器提示。"""
+    try:
+        return tuple(int(part) for part in str(version).split('.')) >= (0, 5, 1)
+    except (TypeError, ValueError):
+        return False
+
+
+def ask_restart(app):
     """应用运行时询问是否立即重启完成安装；无图形界面、超时或选择稍后都返回 False。"""
     try:
-        result = subprocess.run(['osascript', '-e', RESTART_DIALOG], capture_output=True, text=True, timeout=90)
+        result = subprocess.run(['osascript', '-e', restart_dialog(app)], capture_output=True, text=True, timeout=90)
     except (OSError, subprocess.SubprocessError):
         return False
     text = result.stdout or ''
-    # 弹窗脚本必须单行：跨行会被 osascript 解析成新语句而报语法错误（见编译校验测试）。
     # 超时（gave up）按“稍后”处理，不能把未响应当成用户确认。
     return result.returncode == 0 and 'gave up:true' not in text and 'button returned:立即重启' in text
 
@@ -336,8 +350,11 @@ def run(action, app, data_dir, remove_hook=False, no_prompt=False):
         # 先准备文件再询问是否立即重启（--no-prompt 或用户选择稍后时保持只准备）。
         prepare_runtime(data_dir)
         result = inspect(app, data_dir)[1]
-        if result['running_pids'] and (not result['hook_matches'] or result['loader_restart_required']):
-            if not no_prompt and ask_restart() and quit_app(app, executable):
+        # 运行中的新加载器自己会弹应用内确认，安装器只在没有它可弹时才用系统确认框。
+        live_versions = [row.get('version') for row in result['live']]
+        in_app_prompt = bool(live_versions) and all(supports_in_app_prompt(version) for version in live_versions)
+        if result['running_pids'] and (not result['hook_matches'] or (result['loader_restart_required'] and not in_app_prompt)):
+            if not no_prompt and ask_restart(app) and quit_app(app, executable):
                 try:
                     asar, result = inspect(app, data_dir)
                     if not result['hook_matches']:
@@ -355,9 +372,12 @@ def run(action, app, data_dir, remove_hook=False, no_prompt=False):
             return result
         if not result['hook_matches']:
             result['backup'] = apply_hook(app, data_dir, asar)
-        note = ('使用自己的启动入口；首次需正常启动 ZCode，已有独立加载器时界面热更新。'
-                if not result['loader_restart_required'] else
-                '界面脚本可热更新；加载器或仓库服务已更新，下次正常启动 ZCode 生效。')
+        if not result['loader_restart_required']:
+            note = '使用自己的启动入口；首次需正常启动 ZCode，已有独立加载器时界面热更新。'
+        elif in_app_prompt:
+            note = '界面脚本已热更新；加载器或仓库服务已更新，运行中的 ZCode 会弹出应用内重启确认。'
+        else:
+            note = '界面脚本可热更新；加载器或仓库服务已更新，下次正常启动 ZCode 生效。'
         result.update(state='installed', hook_installed=True, hook_matches=True, note=note)
         return result
 

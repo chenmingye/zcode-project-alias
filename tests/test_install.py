@@ -169,22 +169,51 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(self.archive.read_bytes(), hooked)
         ask.assert_not_called()
 
-    def test_restart_dialog_applescript_compiles(self):
+    def test_restart_dialog_applescript_compiles_with_and_without_icon(self):
         """用 osacompile 编译校验弹窗脚本但不弹出；跨行写法会被 osascript 拒绝，必须单行。"""
-        self.assertNotIn('\n', installer.RESTART_DIALOG)
-        compiled = subprocess.run(['osacompile', '-o', str(self.root / 'dialog.scpt'), '-e', installer.RESTART_DIALOG],
-                                  capture_output=True)
-        self.assertEqual(compiled.returncode, 0, compiled.stderr.decode()[:300])
+        icon = self.app / 'Contents/Resources/icon.icns'
+        icon.parent.mkdir(parents=True, exist_ok=True)
+        icon.write_bytes(b'icns-fixture')
+        for app in (None, self.app):
+            script = installer.restart_dialog(app)
+            self.assertNotIn('\n', script)
+            compiled = subprocess.run(['osacompile', '-o', str(self.root / 'dialog.scpt'), '-e', script],
+                                      capture_output=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr.decode()[:300])
+        self.assertIn('icon.icns', installer.restart_dialog(self.app))
+        icon.unlink()
+        self.assertNotIn('icon.icns', installer.restart_dialog(self.app))
 
     def test_ask_restart_ignores_timeout_and_unavailable(self):
         timed_out = subprocess.CompletedProcess([], 0, stdout='button returned:立即重启, gave up:true\n', stderr='')
         with patch.object(installer.subprocess, 'run', return_value=timed_out):
-            self.assertFalse(installer.ask_restart())
+            self.assertFalse(installer.ask_restart(self.app))
         with patch.object(installer.subprocess, 'run', side_effect=FileNotFoundError('no osascript')):
-            self.assertFalse(installer.ask_restart())
+            self.assertFalse(installer.ask_restart(self.app))
         confirmed = subprocess.CompletedProcess([], 0, stdout='button returned:立即重启\n', stderr='')
         with patch.object(installer.subprocess, 'run', return_value=confirmed):
-            self.assertTrue(installer.ask_restart())
+            self.assertTrue(installer.ask_restart(self.app))
+
+    def test_loader_with_in_app_prompt_does_not_use_installer_dialog(self):
+        """运行中的加载器已支持应用内确认（0.5.1+）时，安装器不再弹系统框。"""
+        self.assertTrue(installer.supports_in_app_prompt('0.5.1'))
+        self.assertTrue(installer.supports_in_app_prompt('0.6.0'))
+        self.assertFalse(installer.supports_in_app_prompt('0.5.0'))
+        self.assertFalse(installer.supports_in_app_prompt(None))
+        installer.run('install', self.app, self.data)
+        hooked = self.archive.read_bytes()
+        status = self.data / 'status/123.json'
+        status.parent.mkdir(parents=True, exist_ok=True)
+        status.write_text(json.dumps({'pid': 123, 'version': '0.5.1', 'updatedAt': time.time() * 1000,
+                                      'loaderHash': 'stale-loader-hash', 'serviceHash': 'stale-service-hash'}))
+        with patch.object(installer, 'app_running', return_value=[123]), \
+                patch.object(installer, 'ask_restart') as ask:
+            result = installer.run('install', self.app, self.data)
+        self.assertEqual(result['state'], 'installed')
+        self.assertTrue(result['loader_restart_required'])
+        self.assertEqual(self.archive.read_bytes(), hooked)
+        ask.assert_not_called()
+        self.assertIn('应用内重启确认', result['note'])
 
     def test_renamed_electron_process_is_still_treated_as_running(self):
         self.running.stop()

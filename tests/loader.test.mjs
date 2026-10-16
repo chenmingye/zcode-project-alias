@@ -39,7 +39,8 @@ test('独立加载器在没有其他插件时注入、热更新、停用，隔�
   let tick;
   const suggestions = [];
   const context = vm.createContext({
-    require: name => ({ electron: { app, webContents: { getAllWebContents: () => windows } },
+    require: name => ({ electron: { app, webContents: { getAllWebContents: () => windows },
+        dialog: { showMessageBox: async () => ({ response: 0 }) } },
       './name-suggestions.cjs': { suggest: async workspace => { suggestions.push(workspace); return { candidates: [] }; } },
       'node:fs': fs, 'node:path': path, 'node:crypto': crypto, 'node:vm': vm, 'node:url': url })[name],
     __dirname: dir, __filename: ownLoader,
@@ -84,4 +85,74 @@ test('独立加载器在没有其他插件时注入、热更新、停用，隔�
     assert.equal(fs.existsSync(statusFile), false);
     assert.equal(context.__zcodeProjectAliasLoader, undefined);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+// 最小应用内重启确认环境：可观测 dialog/app 行为，通过 tick 手动驱动轮询。
+const promptFixture = async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zpa-loader-prompt-'));
+  const app = Object.assign(new EventEmitter(), {
+    whenReady: () => Promise.resolve(), getVersion: () => '3.15.3',
+    relaunches: 0, quits: 0,
+    relaunch() { this.relaunches++; }, quit() { this.quits++; },
+  });
+  const resourcePath = '/Applications/ZCode.app/Contents/Resources';
+  const trustedUrl = url.pathToFileURL(`${resourcePath}/app.asar/out/renderer/index.html`).href;
+  const main = Object.assign(new EventEmitter(), {
+    id: 1, context: vm.createContext({ window: {} }), getURL: () => trustedUrl,
+    getType: () => 'window', isDestroyed: () => false,
+    executeJavaScript: async code => vm.runInContext(code, main.context),
+  });
+  const ownLoader = path.join(dir, 'loader.cjs');
+  fs.writeFileSync(ownLoader, loader);
+  fs.writeFileSync(path.join(dir, 'name-suggestions.cjs'), '// fixture service');
+  fs.writeFileSync(path.join(dir, 'alias.js'), source('first'));
+  fs.writeFileSync(path.join(dir, 'enabled.json'), '{"enabled":true,"runtimeVersion":"0.2.0"}');
+  const dialogs = [];
+  let response = 0;
+  let tick;
+  const context = vm.createContext({
+    require: name => ({ electron: { app, webContents: { getAllWebContents: () => [main] },
+        dialog: { showMessageBox: async options => { dialogs.push(options); return { response }; } } },
+      './name-suggestions.cjs': { suggest: async () => ({ candidates: [] }) },
+      'node:fs': fs, 'node:path': path, 'node:crypto': crypto, 'node:vm': vm, 'node:url': url })[name],
+    __dirname: dir, __filename: ownLoader,
+    process: { pid: 43211, resourcesPath: resourcePath }, URL,
+    console: { error: () => {} },
+    setInterval: callback => { tick = callback; return { unref() {} }; }, clearInterval() {},
+  });
+  vm.runInContext(loader, context);
+  await settle();
+  return { dir, app, dialogs, ownLoader, setResponse: value => { response = value; }, tick: () => tick() };
+};
+
+test('加载器发现自身文件更新时弹应用内重启确认：稍后不重启，每次会话只提示一次', async () => {
+  const f = await promptFixture();
+  try {
+    fs.writeFileSync(f.ownLoader, '// updated loader');
+    f.setResponse(0);
+    f.tick(); await settle();
+    assert.equal(f.dialogs.length, 1);
+    // 弹窗选项在 vm 领域内创建，展开成本地数组再做严格比较。
+    assert.deepEqual([...f.dialogs[0].buttons], ['稍后', '立即重启']);
+    assert.equal(f.dialogs[0].cancelId, 0);
+    assert.equal(f.app.relaunches, 0);
+    assert.equal(f.app.quits, 0);
+    f.tick(); await settle();
+    assert.equal(f.dialogs.length, 1);
+    fs.writeFileSync(path.join(f.dir, 'name-suggestions.cjs'), '// updated service');
+    f.tick(); await settle();
+    assert.equal(f.dialogs.length, 1);
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
+});
+
+test('应用内重启确认选择立即重启后请求重启应用', async () => {
+  const f = await promptFixture();
+  try {
+    fs.writeFileSync(f.ownLoader, '// updated loader');
+    f.setResponse(1);
+    f.tick(); await settle();
+    assert.equal(f.dialogs.length, 1);
+    assert.equal(f.app.relaunches, 1);
+    assert.equal(f.app.quits, 1);
+  } finally { fs.rmSync(f.dir, { recursive: true, force: true }); }
 });
