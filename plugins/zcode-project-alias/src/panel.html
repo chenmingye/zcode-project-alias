@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>项目昵称</title><style>/* PANEL_STYLE */</style></head>
+<body><main>
+  <header><div><h1>项目昵称</h1><p>为同名项目设置容易辨认的名字</p></div><button id="refresh">刷新</button></header>
+  <aside class="boundary">昵称和置顶仅用于此面板。原生项目侧栏、真实文件夹和聊天保持不变。</aside>
+  <div class="toolbar"><label class="search-label"><span class="sr-only">搜索项目</span><input id="search" placeholder="搜索昵称或文件夹路径" type="search"></label><button id="add">添加文件夹</button></div>
+  <div id="notice" role="status" aria-live="polite"></div><div id="error" role="alert" hidden></div>
+  <div id="loading">正在连接插件服务…</div><div id="projects" aria-label="项目列表"></div>
+  <div id="empty" hidden>面板中还没有项目。添加文件夹，或导入 ZCode 最近项目。</div>
+  <footer><button id="import">导入最近项目</button><span>只读识别本地 Git / SVN</span></footer>
+</main>
+<dialog id="editor" aria-labelledby="edit-title"><form id="edit-form">
+  <header><h2 id="edit-title">编辑项目</h2><button type="button" class="close" aria-label="关闭">×</button></header>
+  <label for="nickname">项目昵称</label><input id="nickname" maxlength="80" autocomplete="off" placeholder="留空恢复原名">
+  <label for="source">源文件夹</label><input id="source" readonly>
+  <section class="suggestions"><h3>名称候选</h3><p id="suggestion-note">正在读取本地仓库信息…</p><div id="suggestions"></div><input id="copy-fallback" readonly aria-label="请手动复制候选名称" hidden></section>
+  <div class="dialog-error" role="alert" hidden></div>
+  <div class="actions"><button id="restore" type="button">恢复原名</button><button type="button" class="cancel">取消</button><button class="primary" type="submit">保存</button></div>
+</form></dialog>
+<dialog id="add-dialog" aria-labelledby="add-title"><form id="add-form">
+  <header><h2 id="add-title">添加文件夹</h2><button type="button" class="close" aria-label="关闭">×</button></header>
+  <label for="folder-path">本地文件夹完整路径</label><input id="folder-path" required placeholder="/Users/你的用户名/Projects/serverless" autocomplete="off">
+  <p>只添加到昵称面板，不修改 ZCode 原生项目列表。</p><div class="dialog-error" role="alert" hidden></div>
+  <div class="actions"><button class="cancel" type="button">取消</button><button class="primary" type="submit">添加</button></div>
+</form></dialog><script type="module">/* PANEL_SCRIPT */</script></body></html>

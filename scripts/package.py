@@ -16,8 +16,12 @@ assert entry['name'] == manifest['name'] == 'zcode-project-alias'
 assert entry['version'] == manifest['version']
 assert (root / entry['source']).resolve() == plugin
 assert list((plugin / 'commands').glob('*.md'))
-for name in ['alias.js', 'companion.cjs', 'name-suggestions.cjs']:
-    subprocess.run(['node', '--check', str(plugin / 'runtime' / name)], check=True)
+for name in ['runtime/name-suggestions.cjs', 'dist/server.mjs']:
+    subprocess.run(['node', '--check', str(plugin / name)], check=True)
+assert (plugin / 'dist/panel.html').is_file()
+assert (plugin / 'dist/THIRD_PARTY_NOTICES.txt').is_file()
+assert manifest['ui']['surfaces'][0]['server'] in manifest['mcpServers']
+assert not (plugin / 'runtime/companion.cjs').exists()
 output = root / 'dist'
 output.mkdir(exist_ok=True)
 archive = output / f'zcode-project-alias-{manifest["version"]}.zip'

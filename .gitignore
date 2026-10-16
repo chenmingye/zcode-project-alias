@@ -3,3 +3,9 @@ __pycache__/
 test-results/
 dist/
 .DS_Store
+
+# 市场安装产物必须随插件一起分发，根目录 dist 仍为本机打包输出。
+!plugins/zcode-project-alias/dist/
+!plugins/zcode-project-alias/dist/server.mjs
+!plugins/zcode-project-alias/dist/panel.html
+!plugins/zcode-project-alias/dist/THIRD_PARTY_NOTICES.txt

@@ -1,11 +1,39 @@
 {
   "name": "zcode-project-alias",
-  "version": "0.6.0",
-  "description": "独立项目管理：置顶、编辑，以及从本地 SVN/Git 识别并复制昵称前缀",
+  "version": "0.7.0",
+  "description": "在 ZCode 内管理项目昵称、置顶及 Git/SVN 名称候选；使用原版 App 启动",
   "author": {
     "name": "Jason.chen"
   },
   "commands": "commands",
   "homepage": "https://github.com/chenmingye/zcode-project-alias",
-  "repository": "https://github.com/chenmingye/zcode-project-alias"
+  "repository": "https://github.com/chenmingye/zcode-project-alias",
+  "mcpServers": {
+    "projects": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "${ZCODE_PLUGIN_ROOT}/dist/server.mjs"
+      ],
+      "cwd": "${ZCODE_PROJECT_DIR}",
+      "env": {
+        "ZCODE_WORKSPACE_ROOT": "${ZCODE_PROJECT_DIR}"
+      }
+    }
+  },
+  "ui": {
+    "surfaces": [
+      {
+        "id": "projects",
+        "title": {
+          "zh-CN": "项目昵称",
+          "en-US": "Project names"
+        },
+        "icon": "folder",
+        "server": "projects",
+        "resourceUri": "ui://zcode-project-alias/panel.html",
+        "availability": "session"
+      }
+    ]
+  }
 }

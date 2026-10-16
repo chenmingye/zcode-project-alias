@@ -4,8 +4,8 @@
   "plugins": [
     {
       "name": "zcode-project-alias",
-      "version": "0.6.0",
-      "description": "独立项目管理：置顶、编辑与 SVN/Git 名称候选，无其他插件依赖",
+      "version": "0.7.0",
+      "description": "在 ZCode 内管理项目昵称、置顶及 Git/SVN 名称候选；使用原版 App 启动",
       "source": "./plugins/zcode-project-alias",
       "category": "productivity"
     }

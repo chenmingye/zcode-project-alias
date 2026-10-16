@@ -1,42 +1,23 @@
-请安装并验证 ZCode 项目昵称独立扩展，不重新开发。此前长任务已结束，现在正式安装；无需再等待长任务。
+# 交给 ZCode AI 的安装任务
+
+以下全文可以直接复制。请在正在执行的任务已经完成后使用。
+
+```text
+请安装并验收独立插件「ZCode 项目昵称」。当前之前的任务已经完成，现在可以进行安装；如需要正常重启 ZCode，可以执行，但不得强制结束进程。
+
+目标：照常从 /Applications/ZCode.app 原版图标启动，在 ZCode 内的「项目昵称」官方插件面板管理项目昵称、置顶和本地 Git/SVN 名称候选。不要创建额外 App、启动器、登录项或 LaunchAgent，不开启调试端口，不修改 app.asar，不重新签名，不注入原生项目列表，不依赖 token 插件。
 
 来源：https://github.com/chenmingye/zcode-project-alias
-使用 0.6.0 或更新的签名保留版本。先读 README.md 和插件清单，必须包含 runtime/companion.cjs、launch-signed.py、alias.js、name-suggestions.cjs 与 scripts/install.py。禁止使用会修改 app.asar、重签名的安装方案。
+读取当前仓库 README.md，使用 0.7.0 或后续官方 UI Plugin 版本。此前旧版的 install.py 与伴随启动器方案已经撤回，不能沿用旧缓存里的安装命令。
 
-目标：项目行悬停后点击第一个“⋯”，提供置顶 / 编辑 / 移除；编辑弹窗修改昵称并显示只读的本地 SVN/Git 候选，支持填入和复制。保留原按钮、真实路径、会话归属与其他项目数据。
+执行步骤：
+1. 查看当前 ZCode 版本、个人插件状态和该市场来源；有同名来源时更新原来源，不新建第二份。将 zcode-project-alias 安装、启用到用户范围的「个人插件」。安装包已包含 dist/server.mjs 与 dist/panel.html，不需要安装仓库开发依赖。
+2. 如本机存在旧昵称启动器，使用新包 scripts/maintenance.py retire-legacy 停用旧界面并归档自己的旧启动器，保留昵称和备份。该工具不会关闭应用。新面板的数据和旧 Chromium 存储分开，不承诺自动迁移旧昵称，不删除旧数据。
+3. 原版厂商签名必须有效；签名无效时先报告具体情况，不用 ad-hoc 签名或绕过 Computer Use 校验。需要官方安装包恢复时保留用户数据，不以“卸载插件”冒充修复签名。
+4. 在本地项目的会话中展开侧边面板，选择「项目昵称」。也可调用本插件 open_project_manager。若当前旧会话未加载，先新建本地会话；确需重启时正常退出，从原版 ZCode 图标打开。不能恢复使用昵称专用启动器。
+5. 在独立测试目录验证：添加两个同名项目，编辑昵称并保存、取消不保存、恢复原名、置顶与取消置顶、搜索路径和昵称；检查 Git/SVN 候选可填入且不自动保存。直接复制未获系统权限时应提供可手动复制的已选中文本。不向业务 SVN/Git 提交，不访问远端仓库。
+6. 验证文件、宿主设置及业务项目未被改名，面板数据可持久化；明确昵称与置顶只在插件面板生效，不会改变 ZCode 原生左侧项目列表。
+7. 实际调用你自己的 Computer Use：读取应用列表、获取当前 ZCode 窗口 AX 状态和截图。不要仅凭 codesign 通过或历史日志声称 Computer Use 成功。发现问题继续定位修复，不以停用插件作为完成。
 
-优先核对本机副本 /Users/Admin/Desktop/ai_project/Plugin_Workshop/zcode-project-alias；无副本则从上述仓库克隆。保护本地修改，不 reset/clean。以下命令均在实际仓库根目录执行，使用其他安装目录时先定位，不猜路径。
-
-一、运行：
-python3 plugins/zcode-project-alias/scripts/install.py doctor
-
-核对应用版本、signature_verified、responsibility_verified、running_pids、live、live_verified、restart_required。目标为 macOS 官方 ZCode 3.15.3 / 3.15.3.8237，其他版本按实际验证。厂商完整签名不通过时停止安装，先用可信官方应用恢复；不能重签名或绕过校验。保留用户数据。其他插件若自动改写应用，也需先处理该自动注入；不要直接删除它们。
-
-二、从个人插件中管理命令包：
-/plugin marketplace add chenmingye/zcode-project-alias
-/plugin install zcode-project-alias@zcode-project-alias-marketplace
-
-已有安装则按市场更新流程更新同一插件，不重复注册。市场命令包不等于界面已加载。
-
-三、安装自己的伴随启动器：
-python3 plugins/zcode-project-alias/scripts/install.py install --no-prompt
-
-这只写本插件运行目录与用户级启动器，不修改官方应用、不重签名、不开放网络调试端口。运行时需 Python、Node.js 和系统 codesign，不需要 npm install 开发依赖。
-
-首次需通过 ~/Applications/ZCode 项目昵称.app 重新打开官方 ZCode，昵称启动器沿用原有账号、项目与会话数据。直接从原版图标启动不会自动加载昵称功能，以后请用昵称启动器，可拖到 Dock。
-
-若应用已直接打开，--no-prompt 返回 prepared/退出码 2，只表示准备完成；不能冒称生效。用户打开昵称启动器后会看到“稍后 / 重新打开”确认，由用户点击后正常退出并重开，绝不强杀进程。如果用户已明确授权你正常退出，可在独立终端运行：
-python3 plugins/zcode-project-alias/scripts/install.py install --restart --no-prompt
-
-你若运行在 ZCode 内部，退出会结束自己，应先完成准备，一次给我包含真实绝对路径的独立终端命令，不能反复重试或擅自退出。长任务已完成不等于每个新会话都自动授权退出；以当前用户授权为准。
-
-四、安装后重新 doctor，并在真实界面检查菜单、昵称保存与恢复、置顶取消、源文件夹、候选填入及复制。使用临时测试项目，不擅自修改真实业务项目，不点击真实项目“移除”。SVN/Git 仅本地只读，不更新、拉取、提交或运行业务脚本。
-
-单独验证 Computer Use 的实际调用，例如只获取桌面状态，不修改文件或设置。应用签名通过、live_verified 或夹具截图都不能代替这一验收。没有工具或界面通道时明确写待验证，不能宣称全部通过。
-
-五、停用及移除自己的启动器：
-python3 plugins/zcode-project-alias/scripts/install.py uninstall
-
-不退出客户端、不修改官方应用、不删除昵称数据。市场命令包可在个人插件中另外卸载。
-
-交付用中文报告实际版本、安装目录、应用版本、执行命令与退出码、signature_verified、state、live_verified、restart_required、真实界面观察及 Computer Use 调用结果。真实未验证项必须说明。如果这是新对话，先核对本机状态再接手，不假定已经安装成功。
+交付：插件版本与安装路径、从原图标启动的确认、面板入口、实际验收结果与未验证范围、Computer Use 本次真实结果、数据与备份位置。不要发起与安装验收无关的任务，不改其他插件。
+```

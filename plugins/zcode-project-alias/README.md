@@ -1,11 +1,11 @@
-# ZCode 项目昵称
+# 项目昵称
 
-版本 `0.6.0`。独立伴随加载器，提供项目置顶、编辑昵称、本地 SVN/Git 候选名称。
+官方 UI Plugin，版本 0.7.0。照常使用原版 ZCode App 启动，在本地项目会话的「展开侧边面板 → 项目昵称」打开。
 
-不修改 ZCode 应用包、不重签名，需完整有效的官方厂商签名。安装后从 `~/Applications/ZCode 项目昵称.app` 打开官方客户端，沿用现有数据。直接从原版图标打开不自动加载昵称功能。使用匿名调试管道，不开放网络调试端口。
+提供昵称编辑/恢复、置顶、搜索、添加文件夹和本地 SVN/Git 名称候选。昵称与置顶仅作用于插件面板，不能改变原生左侧项目列表，也不更改真实目录或聊天。
 
-运行 `python3 scripts/install.py doctor` 检查，`python3 scripts/install.py install` 安装自己的启动器。客户端已运行时由用户确认正常重新打开；AI 使用 `install --no-prompt` 准备，不能把 prepared 当成生效。仅在用户明确授权正常退出后使用 `--restart`。
+安装目录已包含 dist/server.mjs 和 dist/panel.html，无须 npm install 或额外界面安装步骤。也可用 /zcode-project-alias:project-manager 调用 open_project_manager 打开面板。
 
-停用和移除自己的启动器：`python3 scripts/install.py uninstall`。不改动原厂应用，昵称数据保留。
+不创建额外 App，不修改 ZCode 应用包、不重签名、不注入主应用。不要运行旧 install.py 或 token overlay 安装脚本。
 
-完整说明与测试状态见仓库 README.md。本机已用 ZCode 自身的 Computer Use 成功读取应用列表、Finder 可访问性状态和 ZCode 主窗口真实截图；其他版本需重新验收，签名通过不能替代工具调用。
+数据默认保存在 ~/.zcode/zcode-project-alias/panel/projects.json；卸载保留数据。完整说明及截图见仓库根 README.md。

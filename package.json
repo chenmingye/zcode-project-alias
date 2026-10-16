@@ -1,18 +1,21 @@
 {
   "name": "zcode-project-alias-dev",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/*.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'",
-    "check": "node --check plugins/zcode-project-alias/runtime/alias.js && node --check plugins/zcode-project-alias/runtime/companion.cjs && node --check plugins/zcode-project-alias/runtime/name-suggestions.cjs",
-    "test:native": "node scripts/verify-native.cjs"
+    "build": "node scripts/build.mjs",
+    "check": "node --check plugins/zcode-project-alias/src/server.mjs && node --check plugins/zcode-project-alias/src/store.mjs && node --check plugins/zcode-project-alias/src/panel.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'",
+    "test:panel": "node scripts/test-panel.mjs",
+    "screenshots": "node scripts/test-panel.mjs --screenshots",
+    "package": "python3 scripts/package.py"
   },
   "devDependencies": {
-    "@radix-ui/react-dropdown-menu": "^2.2.1",
+    "@modelcontextprotocol/ext-apps": "2.0.3",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "esbuild": "^0.28.2",
     "playwright": "^1.64.1",
-    "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "zod": "4.6.7"
   }
 }
