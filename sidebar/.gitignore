@@ -1,0 +1,6 @@
+logs/
+backup-live-app/
+*.tar
+*.pid
+*.log
+__pycache__/

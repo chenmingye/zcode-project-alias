@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.zcode.project-alias.repair</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/opt/python@3.12/libexec/bin/python3</string>
+    <string>/Users/Admin/Desktop/ai_project/Plugin_Workshop/zcode-alias-nosign/auto-repair.py</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>3600</integer>
+  <key>StandardOutPath</key><string>/Users/Admin/Desktop/ai_project/Plugin_Workshop/zcode-alias-nosign/logs/auto-repair.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/Admin/Desktop/ai_project/Plugin_Workshop/zcode-alias-nosign/logs/auto-repair.err.log</string>
+</dict>
+</plist>
