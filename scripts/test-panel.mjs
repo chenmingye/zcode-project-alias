@@ -35,6 +35,7 @@ const hostJS = (await build({ stdin: { contents: `
   bridge.oncalltool = async params => { const r=await fetch('/tool',{method:'POST',body:JSON.stringify(params)});if(!r.ok)throw Error('HTTP '+r.status);return r.json(); };
   bridge.oninitialized=()=>{window.initialized=true};
   window.setTheme=theme=>bridge.setHostContext({theme,displayMode:'fullscreen',availableDisplayModes:['inline','fullscreen']});
+  window.teardownPanel=()=>bridge.teardownResource({});
   await bridge.connect(new PostMessageTransport(iframe.contentWindow,iframe.contentWindow));
   iframe.src='/panel';
 `, resolveDir: root }, bundle: true, format: 'esm', platform: 'browser', write: false })).outputFiles[0].text;
@@ -121,6 +122,7 @@ try {
   await shot('panel-add-folder');
   await frame.locator('#folder-path').fill(svn); await frame.getByRole('button', { name: '添加', exact: true }).click();
   await page.waitForFunction(() => document.querySelector('iframe').contentDocument.querySelectorAll('.project').length === 2);
+  assert.deepEqual(await page.evaluate(() => window.teardownPanel()), {});
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ passed: true, sdkHandshake: true, realStdio: true, gitAndSvn: true, failureRetainsInput: true, persisted: true, narrowViewport: true, artifacts }));
 } finally {

@@ -132,7 +132,7 @@ const theme = () => { document.documentElement.dataset.theme = app.getHostContex
 app.onhostcontextchanged = theme;
 app.ontoolresult = result => { if (!busy && !$('#editor').open && !$('#add-dialog').open) accept(result.structuredContent); };
 let poll;
-app.onteardown = async () => { clearInterval(poll); requestSequence++; };
+app.onteardown = async () => { connected = false; clearInterval(poll); requestSequence++; return {}; };
 try {
   await app.connect(); connected = true; theme();
   await run(async () => accept(await call('list_projects')));
