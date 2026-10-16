@@ -169,6 +169,23 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(self.archive.read_bytes(), hooked)
         ask.assert_not_called()
 
+    def test_restart_dialog_applescript_compiles(self):
+        """用 osacompile 编译校验弹窗脚本但不弹出；跨行写法会被 osascript 拒绝，必须单行。"""
+        self.assertNotIn('\n', installer.RESTART_DIALOG)
+        compiled = subprocess.run(['osacompile', '-o', str(self.root / 'dialog.scpt'), '-e', installer.RESTART_DIALOG],
+                                  capture_output=True)
+        self.assertEqual(compiled.returncode, 0, compiled.stderr.decode()[:300])
+
+    def test_ask_restart_ignores_timeout_and_unavailable(self):
+        timed_out = subprocess.CompletedProcess([], 0, stdout='button returned:立即重启, gave up:true\n', stderr='')
+        with patch.object(installer.subprocess, 'run', return_value=timed_out):
+            self.assertFalse(installer.ask_restart())
+        with patch.object(installer.subprocess, 'run', side_effect=FileNotFoundError('no osascript')):
+            self.assertFalse(installer.ask_restart())
+        confirmed = subprocess.CompletedProcess([], 0, stdout='button returned:立即重启\n', stderr='')
+        with patch.object(installer.subprocess, 'run', return_value=confirmed):
+            self.assertTrue(installer.ask_restart())
+
     def test_renamed_electron_process_is_still_treated_as_running(self):
         self.running.stop()
         rows = f'18708 ZCode\n18721 /Applications/ZCode.app/Contents/Frameworks/ZCode Helper\n99 {self.exe}\n'

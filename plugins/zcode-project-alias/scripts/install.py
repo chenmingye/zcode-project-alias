@@ -225,18 +225,21 @@ def resign(app):
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True, capture_output=True)
 
 
+RESTART_DIALOG = ('display dialog "项目昵称插件已准备完成，需要重启 ZCode 才能生效。" '
+                  'with title "项目昵称插件" buttons {"稍后", "立即重启"} '
+                  'default button "立即重启" giving up after 60')
+
+
 def ask_restart():
     """应用运行时询问是否立即重启完成安装；无图形界面、超时或选择稍后都返回 False。"""
-    dialog = ('display dialog "项目昵称插件已准备完成，需要重启 ZCode 才能生效。"\n'
-              'with title "项目昵称插件"\n'
-              'buttons {"稍后", "立即重启"}\n'
-              'default button "立即重启"\n'
-              'giving up after 60')
     try:
-        result = subprocess.run(['osascript', '-e', dialog], capture_output=True, text=True, timeout=90)
+        result = subprocess.run(['osascript', '-e', RESTART_DIALOG], capture_output=True, text=True, timeout=90)
     except (OSError, subprocess.SubprocessError):
         return False
-    return result.returncode == 0 and 'button returned:立即重启' in result.stdout
+    text = result.stdout or ''
+    # 弹窗脚本必须单行：跨行会被 osascript 解析成新语句而报语法错误（见编译校验测试）。
+    # 超时（gave up）按“稍后”处理，不能把未响应当成用户确认。
+    return result.returncode == 0 and 'gave up:true' not in text and 'button returned:立即重启' in text
 
 
 def quit_app(app, executable):
