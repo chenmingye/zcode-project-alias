@@ -1,4 +1,4 @@
-# ZCode 项目昵称 0.4.0
+# ZCode 项目昵称 0.5.0
 
 独立插件，无其他插件依赖。作者：Jason.chen。
 
@@ -17,13 +17,13 @@ python3 scripts/install.py doctor
 python3 scripts/install.py install
 ```
 
-首次安装遇到运行中的 ZCode 时只准备自己的文件，返回 prepared/退出码 2，不修改运行中的应用。等长任务结束并自行退出后，再执行 install，然后正常启动 ZCode。不要通过中断长任务、刷新或重载会话强行加载。
+首次安装或更新加载器遇到运行中的 ZCode 时，安装器先准备自己的文件，再弹出“立即重启 / 稍后”确认：确认后只发送正常退出事件，等待退出、完成安装并自动重新打开；选择稍后或无图形界面时返回 prepared/退出码 2，之后正常退出 ZCode 并重跑 install 即可。脚本场景用 `install --no-prompt` 只准备文件。不要强杀进程、刷新或重载会话。
 
 自己的加载器与配置位于 ~/.zcode/zcode-project-alias/。首次安装在 app.asar 追加自己的启动标记，更新 ASAR/Info.plist 完整性并建立本机 ad-hoc 签名，替换厂商签名；保留 entitlements 与硬化运行时 flags，不关闭完整性校验或修改 fuses。安装前备份应用相关文件，签名失败回滚。不读取或修改其他插件。
 
 已启动独立加载器后，自己的界面脚本支持热更新；加载器本身更新需下次启动。客户端升级可能覆盖入口，需 doctor 后重新安装。
 
-本版新增 name-suggestions.cjs 与加载器桥接能力，旧加载器需在长任务结束后正常启动一次才能识别仓库候选。在此之前仍可手动编辑，不要强制重启。
+0.5.0 修复“编辑项目”弹窗在宿主全局样式重置（`*{margin:0}`）下贴左上角的问题：显式声明弹窗居中，不再依赖 dialog 默认的 auto 边距。只改动界面脚本，热更新即生效，本次不需要重启。
 
 运行中停用：`python3 scripts/install.py uninstall`，约 2 秒内移除自身菜单项并恢复原显示，保留昵称。完整移除入口：应用退出后运行 `python3 scripts/install.py uninstall --remove-hook`。只在市场禁用/卸载命令包不会自动撤销客户端补丁。
 
